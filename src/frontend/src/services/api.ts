@@ -91,6 +91,19 @@ class ApiService {
     return response.json();
   }
 
+  // Analytics
+  async getAnalytics(): Promise<any> {
+    const response = await this.makeRequest('/api/analytics');
+    return response.json();
+  }
+
+  async exportAnalyticsReport(): Promise<any> {
+    const response = await this.makeRequest('/api/analytics/export', {
+      method: 'POST',
+    });
+    return response.json();
+  }
+
   // Auth test
   async testAuth(): Promise<any> {
     const response = await this.makeRequest('/api/auth/test');

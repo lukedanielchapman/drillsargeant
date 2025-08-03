@@ -30,6 +30,7 @@ import apiService from '../../services/api';
 import ProjectForm from '../../components/ProjectForm/ProjectForm';
 import AssessmentForm from '../../components/AssessmentForm/AssessmentForm';
 import IssuesList from '../../components/IssuesList/IssuesList';
+import AnalyticsDashboard from '../../components/AnalyticsDashboard/AnalyticsDashboard';
 
 const Dashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
@@ -39,6 +40,7 @@ const Dashboard: React.FC = () => {
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [assessmentFormOpen, setAssessmentFormOpen] = useState(false);
   const [issuesListOpen, setIssuesListOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -83,11 +85,7 @@ const Dashboard: React.FC = () => {
         setIssuesListOpen(true);
         break;
       case 'analytics':
-        setSnackbar({
-          open: true,
-          message: 'Analytics feature coming soon!',
-          severity: 'info'
-        });
+        setAnalyticsOpen(true);
         break;
       default:
         break;
@@ -419,6 +417,12 @@ const Dashboard: React.FC = () => {
       <IssuesList
         open={issuesListOpen}
         onClose={() => setIssuesListOpen(false)}
+      />
+
+      {/* Analytics Dashboard Dialog */}
+      <AnalyticsDashboard
+        open={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
       />
 
       {/* Snackbar for notifications */}
