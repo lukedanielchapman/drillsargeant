@@ -59,7 +59,8 @@ jobs:
       run: |
         echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > service-account.json
         export GOOGLE_APPLICATION_CREDENTIALS=service-account.json
-        npx firebase-tools@latest login:ci --no-localhost --token "${{ secrets.FIREBASE_TOKEN }}"
+        gcloud auth activate-service-account --key-file=service-account.json
+        gcloud config set project drillsargeant-19d36
         npx firebase-tools@latest deploy --only functions --project drillsargeant-19d36 --non-interactive
       env:
         GOOGLE_APPLICATION_CREDENTIALS: service-account.json 
