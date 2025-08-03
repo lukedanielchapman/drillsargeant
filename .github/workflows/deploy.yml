@@ -60,6 +60,7 @@ jobs:
         echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > service-account.json
         export GOOGLE_APPLICATION_CREDENTIALS=service-account.json
         gcloud auth activate-service-account --key-file=service-account.json
+        gcloud iam service-accounts add-iam-policy-binding drillsargeant-19d36@appspot.gserviceaccount.com --member="serviceAccount:firebase-adminsdk-fbsvc@drillsargeant-19d36.iam.gserviceaccount.com" --role="roles/iam.serviceAccountUser"
         npx firebase-tools@latest deploy --only functions --project drillsargeant-19d36 --non-interactive
       env:
         GOOGLE_APPLICATION_CREDENTIALS: service-account.json 
