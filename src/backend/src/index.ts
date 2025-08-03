@@ -8,6 +8,7 @@ import { db } from './config/firebase';
 import * as functions from 'firebase-functions';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createServer } from 'http';
+import { codeAnalyzer, AnalysisResult } from './services/codeAnalyzer';
 
 // Load environment variables
 dotenv.config();
@@ -116,38 +117,123 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
   }
 });
 
+// Enhanced Projects API with real code analysis
 app.post('/api/projects', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
-    const { name, description, repositoryUrl } = req.body;
-    
-    if (!name || !description || !repositoryUrl) {
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const { name, description, sourceType, sourceUrl, localPath, files, analysisConfig } = req.body;
+
+    if (!name || !sourceType) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    
+
     const projectData = {
       name,
-      description,
-      repositoryUrl,
+      description: description || '',
       userId,
+      sourceType,
+      sourceUrl: sourceUrl || '',
+      localPath: localPath || '',
+      files: files || [],
+      analysisConfig: analysisConfig || {
+        securityScan: true,
+        performanceAnalysis: true,
+        codeQuality: true,
+        documentationCheck: true,
+        dependencyAudit: true,
+        accessibilityCheck: false,
+        seoAnalysis: false
+      },
+      status: 'analyzing',
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: 'active'
+      updatedAt: new Date().toISOString()
     };
-    
+
     const docRef = await db.collection('projects').add(projectData);
+
+    // Start real code analysis based on source type
+    let analysisResult: AnalysisResult;
     
-    res.status(201).json({
-      id: docRef.id,
-      ...projectData
-    });
+    try {
+      switch (sourceType) {
+        case 'git':
+          if (!sourceUrl) {
+            throw new Error('Git URL is required');
+          }
+          analysisResult = await codeAnalyzer.analyzeGitRepository(sourceUrl, projectData.analysisConfig);
+          break;
+          
+        case 'web':
+          if (!sourceUrl) {
+            throw new Error('Web URL is required');
+          }
+          analysisResult = await codeAnalyzer.analyzeWebUrl(sourceUrl, projectData.analysisConfig);
+          break;
+          
+        case 'local':
+          if (!localPath && (!files || files.length === 0)) {
+            throw new Error('Local path or files are required');
+          }
+          // For local files, we'll need to handle file uploads
+          // For now, we'll use a mock analysis
+          analysisResult = await codeAnalyzer.analyzeLocalCodebase(localPath || './temp', projectData.analysisConfig);
+          break;
+          
+        default:
+          throw new Error('Invalid source type');
+      }
+
+      // Store analysis results
+      await db.collection('projects').doc(docRef.id).update({
+        status: 'completed',
+        analysisResult,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Store issues in separate collection
+      for (const issue of analysisResult.issues) {
+        await db.collection('issues').add({
+          ...issue,
+          projectId: docRef.id,
+          userId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      res.status(201).json({
+        id: docRef.id,
+        ...projectData,
+        analysisResult
+      });
+
+    } catch (analysisError: any) {
+      console.error('Analysis error:', analysisError);
+      
+      // Update project status to failed
+      await db.collection('projects').doc(docRef.id).update({
+        status: 'failed',
+        error: analysisError.message || 'Unknown analysis error',
+        updatedAt: new Date().toISOString()
+      });
+
+      res.status(500).json({ 
+        error: 'Analysis failed', 
+        details: analysisError.message || 'Unknown analysis error'
+      });
+    }
+
   } catch (error) {
     console.error('Error creating project:', error);
     res.status(500).json({ error: 'Failed to create project' });
   }
 });
 
-// Enhanced Assessments API with real-time progress
+// Enhanced Assessments API with real analysis
 app.post('/api/assessments', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
@@ -173,7 +259,21 @@ app.post('/api/assessments', authenticateToken, async (req, res) => {
     if (projectData?.userId !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
+
+    // Get existing issues for this project
+    const issuesSnapshot = await db.collection('issues')
+      .where('projectId', '==', projectId)
+      .where('userId', '==', userId)
+      .get();
+
+    const existingIssues: any[] = [];
+    issuesSnapshot.forEach(doc => {
+      existingIssues.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
     const assessmentData = {
       projectId,
       assessmentType,
@@ -183,7 +283,8 @@ app.post('/api/assessments', authenticateToken, async (req, res) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       progress: 0,
-      results: null
+      results: null,
+      issuesFound: existingIssues.length
     };
     
     const docRef = await db.collection('assessments').add(assessmentData);
@@ -217,35 +318,41 @@ app.post('/api/assessments', authenticateToken, async (req, res) => {
       if (progress >= 100) {
         clearInterval(progressInterval);
         
+        // Calculate real results based on existing issues
+        const criticalIssues = existingIssues.filter(i => i.severity === 'critical').length;
+        const highIssues = existingIssues.filter(i => i.severity === 'high').length;
+        const mediumIssues = existingIssues.filter(i => i.severity === 'medium').length;
+        const lowIssues = existingIssues.filter(i => i.severity === 'low').length;
+        
+        const totalIssues = existingIssues.length;
+        const securityIssues = existingIssues.filter(i => i.type === 'security').length;
+        const performanceIssues = existingIssues.filter(i => i.type === 'performance').length;
+        const qualityIssues = existingIssues.filter(i => i.type === 'quality').length;
+        const documentationIssues = existingIssues.filter(i => i.type === 'documentation').length;
+        
+        // Calculate scores (higher is better)
+        const securityScore = Math.max(0, 100 - (securityIssues * 20));
+        const performanceScore = Math.max(0, 100 - (performanceIssues * 15));
+        const qualityScore = Math.max(0, 100 - (qualityIssues * 10));
+        const documentationScore = Math.max(0, 100 - (documentationIssues * 5));
+        
         const results = {
-          security: Math.floor(Math.random() * 30) + 70,
-          performance: Math.floor(Math.random() * 30) + 70,
-          quality: Math.floor(Math.random() * 30) + 70,
-          documentation: Math.floor(Math.random() * 30) + 70,
-          issues: [
-            {
-              id: '1',
-              title: 'SQL Injection Vulnerability',
-              description: 'User input is directly concatenated into SQL queries without proper sanitization.',
-              severity: 'critical',
-              type: 'security',
-              filePath: 'src/api/users.js',
-              lineNumber: 45,
-              codeSnippet: 'const query = `SELECT * FROM users WHERE id = ${userId}`;',
-              recommendation: 'Use parameterized queries or an ORM to prevent SQL injection attacks.'
-            },
-            {
-              id: '2',
-              title: 'Memory Leak in Event Listeners',
-              description: 'Event listeners are not properly removed when components unmount.',
-              severity: 'high',
-              type: 'performance',
-              filePath: 'src/components/ProductList.jsx',
-              lineNumber: 23,
-              codeSnippet: 'window.addEventListener("resize", handleResize);',
-              recommendation: 'Remove event listeners in useEffect cleanup function.'
-            }
-          ]
+          security: securityScore,
+          performance: performanceScore,
+          quality: qualityScore,
+          documentation: documentationScore,
+          issues: existingIssues.slice(0, 10), // Show top 10 issues
+          summary: {
+            totalIssues,
+            criticalIssues,
+            highIssues,
+            mediumIssues,
+            lowIssues,
+            securityIssues,
+            performanceIssues,
+            qualityIssues,
+            documentationIssues
+          }
         };
         
         await docRef.update({
@@ -301,7 +408,7 @@ app.get('/api/assessments/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Issues API
+// Enhanced Issues API with real data
 app.get('/api/issues', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
