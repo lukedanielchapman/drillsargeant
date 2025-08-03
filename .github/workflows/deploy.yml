@@ -53,4 +53,10 @@ jobs:
         repoToken: '${{ secrets.GITHUB_TOKEN }}'
         firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
         projectId: drillsargeant-19d36
-        channelId: live 
+        channelId: live
+    
+    - name: Deploy Firebase Functions
+      run: |
+        npx firebase-tools@latest deploy --only functions --project drillsargeant-19d36 --non-interactive
+      env:
+        FIREBASE_TOKEN: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' 
