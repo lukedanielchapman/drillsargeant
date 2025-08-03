@@ -29,7 +29,11 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Snackbar
+  Snackbar,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
 import { 
   Close, 
@@ -76,74 +80,36 @@ interface AnalyticsDashboardProps {
 interface AnalyticsData {
   overview: {
     totalProjects: number;
-    totalAssessments: number;
     totalIssues: number;
-    averageScore: number;
-    improvementTrend: number;
-  };
-  scores: {
-    security: number;
-    performance: number;
-    quality: number;
-    documentation: number;
+    criticalIssues: number;
+    highIssues: number;
+    mediumIssues: number;
+    lowIssues: number;
+    securityIssues: number;
+    performanceIssues: number;
+    qualityIssues: number;
+    documentationIssues: number;
   };
   trends: {
-    labels: string[];
-    security: number[];
-    performance: number[];
-    quality: number[];
-    documentation: number[];
+    recentIssues: number;
+    previousIssues: number;
+    improvementTrend: number;
   };
+  projectPerformance: Array<{
+    id: string;
+    name: string;
+    issues: number;
+    status: string;
+  }>;
   topIssues: Array<{
     id: string;
     title: string;
     severity: string;
     type: string;
-    count: number;
-  }>;
-  projectPerformance: Array<{
-    id: string;
-    name: string;
-    score: number;
-    issues: number;
-    lastAssessment: string;
+    filePath: string;
+    lineNumber: number;
   }>;
 }
-
-const MOCK_ANALYTICS_DATA: AnalyticsData = {
-  overview: {
-    totalProjects: 12,
-    totalAssessments: 45,
-    totalIssues: 156,
-    averageScore: 78,
-    improvementTrend: 12
-  },
-  scores: {
-    security: 85,
-    performance: 72,
-    quality: 79,
-    documentation: 65
-  },
-  trends: {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    security: [70, 75, 80, 82, 85, 85],
-    performance: [60, 65, 68, 70, 72, 72],
-    quality: [65, 70, 75, 77, 79, 79],
-    documentation: [50, 55, 60, 62, 65, 65]
-  },
-  topIssues: [
-    { id: '1', title: 'SQL Injection Vulnerability', severity: 'critical', type: 'security', count: 8 },
-    { id: '2', title: 'Memory Leak in Event Listeners', severity: 'high', type: 'performance', count: 12 },
-    { id: '3', title: 'Missing Error Handling', severity: 'medium', type: 'quality', count: 15 },
-    { id: '4', title: 'Incomplete API Documentation', severity: 'low', type: 'documentation', count: 22 }
-  ],
-  projectPerformance: [
-    { id: '1', name: 'E-commerce Platform', score: 85, issues: 12, lastAssessment: '2024-01-15' },
-    { id: '2', name: 'Mobile App Backend', score: 78, issues: 8, lastAssessment: '2024-01-14' },
-    { id: '3', name: 'Admin Dashboard', score: 92, issues: 5, lastAssessment: '2024-01-13' },
-    { id: '4', name: 'API Gateway', score: 71, issues: 18, lastAssessment: '2024-01-12' }
-  ]
-};
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
@@ -240,20 +206,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
   }, [open]);
 
   const loadAnalytics = async () => {
-    setLoading(true);
     try {
-      // TODO: Replace with actual API call
-      // const data = await apiService.getAnalytics();
-      // setAnalyticsData(data);
-      
-      // Using mock data for now
-      setTimeout(() => {
-        setAnalyticsData(MOCK_ANALYTICS_DATA);
-        setLoading(false);
-      }, 1000);
-    } catch (error) {
+      setLoading(true);
+      setError('');
+      const data = await apiService.getAnalytics();
+      setAnalyticsData(data);
+    } catch (error: any) {
       console.error('Error loading analytics:', error);
-      setError('Failed to load analytics data. Please try again.');
+      setError(error.message || 'Failed to load analytics data');
+    } finally {
       setLoading(false);
     }
   };
@@ -357,36 +318,30 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
   };
 
   // Prepare chart data
-  const trendData = analyticsData?.trends.labels.map((label, index) => ({
-    month: label,
-    security: analyticsData.trends.security[index],
-    performance: analyticsData.trends.performance[index],
-    quality: analyticsData.trends.quality[index],
-    documentation: analyticsData.trends.documentation[index]
-  })) || [];
+  const trendData = [
+    { name: 'Recent Issues', value: analyticsData?.trends.recentIssues || 0 },
+    { name: 'Previous Issues', value: analyticsData?.trends.previousIssues || 0 }
+  ];
 
-  const scoreData = analyticsData ? [
-    { name: 'Security', value: analyticsData.scores.security, color: '#FF6B6B' },
-    { name: 'Performance', value: analyticsData.scores.performance, color: '#4ECDC4' },
-    { name: 'Quality', value: analyticsData.scores.quality, color: '#45B7D1' },
-    { name: 'Documentation', value: analyticsData.scores.documentation, color: '#96CEB4' }
-  ] : [];
+  const scoreData = [
+    { name: 'Critical', value: analyticsData?.overview.criticalIssues || 0, color: '#ff4444' },
+    { name: 'High', value: analyticsData?.overview.highIssues || 0, color: '#ff8800' },
+    { name: 'Medium', value: analyticsData?.overview.mediumIssues || 0, color: '#ffaa00' },
+    { name: 'Low', value: analyticsData?.overview.lowIssues || 0, color: '#00aa00' }
+  ];
 
   const projectChartData = analyticsData?.projectPerformance.map(project => ({
     name: project.name,
-    score: project.score,
-    issues: project.issues
+    issues: project.issues,
+    status: project.status
   })) || [];
 
-  const issueTypeData = analyticsData?.topIssues.reduce((acc, issue) => {
-    const existing = acc.find(item => item.name === issue.type);
-    if (existing) {
-      existing.value += issue.count;
-    } else {
-      acc.push({ name: issue.type, value: issue.count });
-    }
-    return acc;
-  }, [] as Array<{ name: string; value: number }>) || [];
+  const issueTypeData = [
+    { name: 'Security', value: analyticsData?.overview.securityIssues || 0 },
+    { name: 'Performance', value: analyticsData?.overview.performanceIssues || 0 },
+    { name: 'Quality', value: analyticsData?.overview.qualityIssues || 0 },
+    { name: 'Documentation', value: analyticsData?.overview.documentationIssues || 0 }
+  ];
 
   if (!analyticsData) {
     return null;
@@ -458,11 +413,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
               {/* Overview Cards */}
               <Grid container spacing={2} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
+                  <Card sx={{ background: 'rgba(255, 255, 255, 0.02)', height: '100%' }}>
                     <CardContent>
                       <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
                         {analyticsData.overview.totalProjects}
@@ -474,61 +425,37 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
                   </Card>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    <CardContent>
-                      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-                        {analyticsData.overview.totalAssessments}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Assessments Run
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
+                  <Card sx={{ background: 'rgba(255, 255, 255, 0.02)', height: '100%' }}>
                     <CardContent>
                       <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
                         {analyticsData.overview.totalIssues}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Issues Found
+                        Total Issues
                       </Typography>
                     </CardContent>
                   </Card>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
+                  <Card sx={{ background: 'rgba(255, 255, 255, 0.02)', height: '100%' }}>
                     <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                          {analyticsData.overview.averageScore}%
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {analyticsData.overview.improvementTrend > 0 ? (
-                            <TrendingUp color="success" />
-                          ) : (
-                            <TrendingDown color="error" />
-                          )}
-                          <Typography variant="caption" color={analyticsData.overview.improvementTrend > 0 ? 'success.main' : 'error.main'}>
-                            {Math.abs(analyticsData.overview.improvementTrend)}%
-                          </Typography>
-                        </Box>
-                      </Box>
+                      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+                        {analyticsData.overview.criticalIssues}
+                      </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Average Score
+                        Critical Issues
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ background: 'rgba(255, 255, 255, 0.02)', height: '100%' }}>
+                    <CardContent>
+                      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+                        {analyticsData.trends.improvementTrend}%
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Improvement Trend
                       </Typography>
                     </CardContent>
                   </Card>
@@ -562,7 +489,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
                           <AreaChart data={trendData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                             <XAxis 
-                              dataKey="month" 
+                              dataKey="name" 
                               stroke="rgba(255,255,255,0.7)"
                               tick={{ fill: 'rgba(255,255,255,0.7)' }}
                             />
@@ -580,34 +507,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
                             <Legend />
                             <Area 
                               type="monotone" 
-                              dataKey="security" 
+                              dataKey="value" 
                               stackId="1" 
                               stroke="#FF6B6B" 
                               fill="#FF6B6B" 
-                              fillOpacity={0.6}
-                            />
-                            <Area 
-                              type="monotone" 
-                              dataKey="performance" 
-                              stackId="1" 
-                              stroke="#4ECDC4" 
-                              fill="#4ECDC4" 
-                              fillOpacity={0.6}
-                            />
-                            <Area 
-                              type="monotone" 
-                              dataKey="quality" 
-                              stackId="1" 
-                              stroke="#45B7D1" 
-                              fill="#45B7D1" 
-                              fillOpacity={0.6}
-                            />
-                            <Area 
-                              type="monotone" 
-                              dataKey="documentation" 
-                              stackId="1" 
-                              stroke="#96CEB4" 
-                              fill="#96CEB4" 
                               fillOpacity={0.6}
                             />
                           </AreaChart>
@@ -644,8 +547,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
                               tick={{ fill: 'rgba(255,255,255,0.7)' }}
                             />
                             <Tooltip 
-                              contentStyle={{
-                                backgroundColor: 'rgba(0,0,0,0.8)',
+                              contentStyle={{ 
+                                backgroundColor: 'rgba(0,0,0,0.8)', 
                                 border: '1px solid rgba(255,255,255,0.2)',
                                 borderRadius: '8px'
                               }}
@@ -795,44 +698,25 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
                           Top Issues
                         </Typography>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          {analyticsData.topIssues.map((issue) => (
-                            <Box key={issue.id} sx={{ 
-                              p: 2, 
-                              borderRadius: 1, 
-                              bgcolor: 'rgba(255, 255, 255, 0.02)',
-                              border: '1px solid rgba(255, 255, 255, 0.05)'
-                            }}>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
-                                  {issue.title}
-                                </Typography>
-                                <Chip 
-                                  label={issue.count} 
-                                  size="small" 
-                                  color="primary"
-                                  variant="outlined"
-                                />
-                              </Box>
-                              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <List dense>
+                          {analyticsData.topIssues.map((issue, index) => (
+                            <ListItem key={issue.id} sx={{ px: 0 }}>
+                              <ListItemIcon>
                                 {getSeverityIcon(issue.severity)}
-                                <Chip 
-                                  label={issue.severity} 
-                                  size="small" 
-                                  variant="outlined"
-                                  sx={{ fontSize: '0.7rem' }}
-                                />
-                                {getTypeIcon(issue.type)}
-                                <Chip 
-                                  label={issue.type} 
-                                  size="small" 
-                                  variant="outlined"
-                                  sx={{ fontSize: '0.7rem' }}
-                                />
-                              </Box>
-                            </Box>
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={issue.title}
+                                secondary={`${issue.filePath}:${issue.lineNumber}`}
+                              />
+                              <Chip 
+                                label={issue.type} 
+                                size="small" 
+                                color="primary"
+                                variant="outlined"
+                              />
+                            </ListItem>
                           ))}
-                        </Box>
+                        </List>
                       </CardContent>
                     </Card>
                   </Grid>

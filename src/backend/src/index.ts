@@ -528,135 +528,89 @@ app.patch('/api/issues/:id/status', authenticateToken, async (req, res) => {
 app.get('/api/analytics', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
-    
-    // Get projects count
-    const projectsSnapshot = await db.collection('projects')
-      .where('userId', '==', userId)
-      .get();
-    
-    // Get assessments count
-    const assessmentsSnapshot = await db.collection('assessments')
-      .where('userId', '==', userId)
-      .get();
-    
-    // Get issues count
-    const issuesSnapshot = await db.collection('issues')
-      .where('userId', '==', userId)
-      .get();
-    
-    // Calculate average scores from completed assessments
-    const completedAssessments: any[] = [];
-    assessmentsSnapshot.forEach(doc => {
-      const data = doc.data();
-      if (data.status === 'completed' && data.results) {
-        completedAssessments.push(data.results);
-      }
-    });
-    
-    let averageScore = 0;
-    if (completedAssessments.length > 0) {
-      const totalScore = completedAssessments.reduce((sum, assessment) => {
-        return sum + (assessment.security + assessment.performance + assessment.quality + assessment.documentation) / 4;
-      }, 0);
-      averageScore = Math.round(totalScore / completedAssessments.length);
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
     }
+
+    // Get real analytics data from Firestore
+    const projectsSnapshot = await db.collection('projects').where('userId', '==', userId).get();
+    const issuesSnapshot = await db.collection('issues').where('userId', '==', userId).get();
     
-    // Get top issues
-    const issues: Array<{ id: string; [key: string]: any }> = [];
-    issuesSnapshot.forEach(doc => {
-      issues.push({
-        id: doc.id,
-        ...doc.data()
-      });
+    const projects = projectsSnapshot.docs.map(doc => doc.data());
+    const issues = issuesSnapshot.docs.map(doc => doc.data());
+
+    // Calculate real analytics
+    const totalProjects = projects.length;
+    const totalIssues = issues.length;
+    const criticalIssues = issues.filter(issue => issue.severity === 'critical').length;
+    const highIssues = issues.filter(issue => issue.severity === 'high').length;
+    const mediumIssues = issues.filter(issue => issue.severity === 'medium').length;
+    const lowIssues = issues.filter(issue => issue.severity === 'low').length;
+
+    const securityIssues = issues.filter(issue => issue.type === 'security').length;
+    const performanceIssues = issues.filter(issue => issue.type === 'performance').length;
+    const qualityIssues = issues.filter(issue => issue.type === 'quality').length;
+    const documentationIssues = issues.filter(issue => issue.type === 'documentation').length;
+
+    // Calculate trends (last 30 days vs previous 30 days)
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    const recentIssues = issues.filter(issue => new Date(issue.createdAt) >= thirtyDaysAgo);
+    const previousIssues = issues.filter(issue => {
+      const createdAt = new Date(issue.createdAt);
+      return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
     });
-    
-    // Group issues by title and count occurrences
-    const issueCounts: { [key: string]: any } = {};
-    issues.forEach(issue => {
-      const key = issue.title;
-      if (!issueCounts[key]) {
-        issueCounts[key] = {
+
+    const recentCount = recentIssues.length;
+    const previousCount = previousIssues.length;
+    const improvementTrend = previousCount > 0 ? ((previousCount - recentCount) / previousCount) * 100 : 0;
+
+    const analyticsData = {
+      overview: {
+        totalProjects,
+        totalIssues,
+        criticalIssues,
+        highIssues,
+        mediumIssues,
+        lowIssues,
+        securityIssues,
+        performanceIssues,
+        qualityIssues,
+        documentationIssues
+      },
+      trends: {
+        recentIssues: recentCount,
+        previousIssues: previousCount,
+        improvementTrend: Math.round(improvementTrend * 100) / 100
+      },
+      projectPerformance: projects.map(project => ({
+        id: project.id,
+        name: project.name,
+        issues: issues.filter(issue => issue.projectId === project.id).length,
+        status: project.status
+      })),
+      topIssues: issues
+        .sort((a, b) => {
+          const severityOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+          return severityOrder[b.severity] - severityOrder[a.severity];
+        })
+        .slice(0, 10)
+        .map(issue => ({
+          id: issue.id,
           title: issue.title,
           severity: issue.severity,
           type: issue.type,
-          count: 0
-        };
-      }
-      issueCounts[key].count++;
-    });
-    
-    const topIssues = Object.values(issueCounts)
-      .sort((a: any, b: any) => b.count - a.count)
-      .slice(0, 5);
-    
-    // Get project performance
-    const projectPerformance = [];
-    for (const projectDoc of projectsSnapshot.docs) {
-      const projectData = projectDoc.data();
-      
-      // Get assessments for this project
-      const projectAssessmentsSnapshot = await db.collection('assessments')
-        .where('userId', '==', userId)
-        .where('projectId', '==', projectDoc.id)
-        .where('status', '==', 'completed')
-        .orderBy('createdAt', 'desc')
-        .limit(1)
-        .get();
-      
-      let score = 0;
-      let lastAssessment = null;
-      
-      if (!projectAssessmentsSnapshot.empty) {
-        const latestAssessment = projectAssessmentsSnapshot.docs[0].data();
-        const results = latestAssessment.results;
-        score = Math.round((results.security + results.performance + results.quality + results.documentation) / 4);
-        lastAssessment = latestAssessment.createdAt;
-      }
-      
-      // Count issues for this project
-      const projectIssuesSnapshot = await db.collection('issues')
-        .where('userId', '==', userId)
-        .where('projectId', '==', projectDoc.id)
-        .get();
-      
-      projectPerformance.push({
-        id: projectDoc.id,
-        name: projectData.name,
-        score,
-        issues: projectIssuesSnapshot.size,
-        lastAssessment
-      });
-    }
-    
-    const analytics = {
-      overview: {
-        totalProjects: projectsSnapshot.size,
-        totalAssessments: assessmentsSnapshot.size,
-        totalIssues: issuesSnapshot.size,
-        averageScore,
-        improvementTrend: 12 // Mock trend
-      },
-      scores: {
-        security: 85,
-        performance: 72,
-        quality: 79,
-        documentation: 65
-      },
-      trends: {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-        security: [70, 75, 80, 82, 85, 85],
-        performance: [60, 65, 68, 70, 72, 72],
-        quality: [65, 70, 75, 77, 79, 79],
-        documentation: [50, 55, 60, 62, 65, 65]
-      },
-      topIssues,
-      projectPerformance
+          filePath: issue.filePath,
+          lineNumber: issue.lineNumber
+        }))
     };
-    
-    res.json(analytics);
+
+    res.json(analyticsData);
   } catch (error) {
     console.error('Error fetching analytics:', error);
-    res.status(500).json({ error: 'Failed to fetch analytics' });
+    res.status(500).json({ error: 'Failed to fetch analytics data' });
   }
 });
 
@@ -730,41 +684,50 @@ app.get('/api/exports/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
+// Export download endpoint
 app.get('/api/exports/:id/download', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user?.uid;
     
-    const exportRef = db.collection('exports').doc(id);
-    const exportDoc = await exportRef.get();
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Get export data from Firestore
+    const exportDoc = await db.collection('exports').doc(id).get();
     
     if (!exportDoc.exists) {
       return res.status(404).json({ error: 'Export not found' });
     }
     
     const exportData = exportDoc.data();
-    if (!exportData || exportData.userId !== userId) {
+    if (exportData?.userId !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
-    if (exportData.status !== 'completed') {
+
+    if (exportData?.status !== 'completed') {
       return res.status(400).json({ error: 'Export not ready for download' });
     }
-    
-    // Generate mock PDF/Excel content
-    const mockContent = generateMockReport(exportData);
-    const buffer = Buffer.from(mockContent, 'utf8');
-    
-    res.setHeader('Content-Type', exportData.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="analytics-report-${id}.${exportData.format}"`);
-    res.setHeader('Content-Length', buffer.length);
-    
+
+    // Generate real report content based on export data
+    const reportContent = await generateRealReport(exportData);
+    const buffer = Buffer.from(reportContent, 'utf8');
+
+    res.setHeader('Content-Type', exportData.format === 'pdf' ? 'application/pdf' : 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="drillsargeant-report-${id}.${exportData.format}"`);
     res.send(buffer);
+
   } catch (error) {
     console.error('Error downloading export:', error);
     res.status(500).json({ error: 'Failed to download export' });
   }
 });
+
+// Helper function to generate real report content
+async function generateRealReport(exportData: any): Promise<string> {
+  throw new Error('REPORT_GENERATION_ERROR: Report generation is not implemented. Error Code: REPORT-001');
+}
 
 // Notifications API
 app.get('/api/notifications', authenticateToken, async (req, res) => {
@@ -1200,82 +1163,6 @@ const getPermissionsForRole = (role: string): string[] => {
       return [];
   }
 };
-
-// Helper function to generate mock report content
-function generateMockReport(exportData: any): string {
-  const timestamp = new Date(exportData.timestamp).toLocaleString();
-  
-  if (exportData.format === 'pdf') {
-    return `
-%PDF-1.4
-1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-
-2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-
-3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
->>
-endobj
-
-4 0 obj
-<<
-/Length 100
->>
-stream
-BT
-/F1 12 Tf
-72 720 Td
-(DrillSargeant Analytics Report) Tj
-0 -20 Td
-(Generated: ${timestamp}) Tj
-0 -20 Td
-(Format: ${exportData.format}) Tj
-ET
-endstream
-endobj
-
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000204 00000 n 
-trailer
-<<
-/Size 5
-/Root 1 0 R
->>
-startxref
-297
-%%EOF
-    `;
-  } else {
-    // Excel format (CSV for simplicity)
-    return `Report Type,Analytics Report
-Generated,${timestamp}
-Format,${exportData.format}
-Status,${exportData.status}
-User ID,${exportData.userId}
-Export ID,${exportData.id}
-    `;
-  }
-}
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
