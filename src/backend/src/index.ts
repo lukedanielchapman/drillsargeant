@@ -348,7 +348,7 @@ app.get('/api/analytics', authenticateToken, async (req, res) => {
     }
     
     // Get top issues
-    const issues: any[] = [];
+    const issues: Array<{ id: string; [key: string]: any }> = [];
     issuesSnapshot.forEach(doc => {
       issues.push({
         id: doc.id,
@@ -456,6 +456,7 @@ app.post('/api/analytics/export', authenticateToken, async (req, res) => {
       userId,
       timestamp: new Date().toISOString(),
       format,
+      status: 'processing',
       data: {
         // Include all analytics data
         projects: [],
@@ -466,11 +467,20 @@ app.post('/api/analytics/export', authenticateToken, async (req, res) => {
     };
     
     // Store export request
-    await db.collection('exports').add(exportData);
+    const docRef = await db.collection('exports').add(exportData);
+    
+    // Simulate processing delay
+    setTimeout(async () => {
+      await docRef.update({
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        downloadUrl: `https://storage.googleapis.com/drillsargeant-exports/${docRef.id}.${format}`
+      });
+    }, 3000);
     
     res.json({
       message: 'Export request submitted successfully',
-      exportId: 'export-' + Date.now(),
+      exportId: docRef.id,
       estimatedTime: '2-3 minutes'
     });
   } catch (error) {
@@ -478,6 +488,145 @@ app.post('/api/analytics/export', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to create export' });
   }
 });
+
+app.get('/api/exports/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    
+    const exportRef = db.collection('exports').doc(id);
+    const exportDoc = await exportRef.get();
+    
+    if (!exportDoc.exists) {
+      return res.status(404).json({ error: 'Export not found' });
+    }
+    
+    const exportData = exportDoc.data();
+    if (exportData?.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    res.json({
+      id: exportDoc.id,
+      ...exportData
+    });
+  } catch (error) {
+    console.error('Error fetching export status:', error);
+    res.status(500).json({ error: 'Failed to fetch export status' });
+  }
+});
+
+app.get('/api/exports/:id/download', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    
+    const exportRef = db.collection('exports').doc(id);
+    const exportDoc = await exportRef.get();
+    
+    if (!exportDoc.exists) {
+      return res.status(404).json({ error: 'Export not found' });
+    }
+    
+    const exportData = exportDoc.data();
+    if (!exportData || exportData.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    if (exportData.status !== 'completed') {
+      return res.status(400).json({ error: 'Export not ready for download' });
+    }
+    
+    // Generate mock PDF/Excel content
+    const mockContent = generateMockReport(exportData);
+    const buffer = Buffer.from(mockContent, 'utf8');
+    
+    res.setHeader('Content-Type', exportData.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="analytics-report-${id}.${exportData.format}"`);
+    res.setHeader('Content-Length', buffer.length);
+    
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error downloading export:', error);
+    res.status(500).json({ error: 'Failed to download export' });
+  }
+});
+
+// Helper function to generate mock report content
+function generateMockReport(exportData: any): string {
+  const timestamp = new Date(exportData.timestamp).toLocaleString();
+  
+  if (exportData.format === 'pdf') {
+    return `
+%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+>>
+endobj
+
+4 0 obj
+<<
+/Length 100
+>>
+stream
+BT
+/F1 12 Tf
+72 720 Td
+(DrillSargeant Analytics Report) Tj
+0 -20 Td
+(Generated: ${timestamp}) Tj
+0 -20 Td
+(Format: ${exportData.format}) Tj
+ET
+endstream
+endobj
+
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000204 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+297
+%%EOF
+    `;
+  } else {
+    // Excel format (CSV for simplicity)
+    return `Report Type,Analytics Report
+Generated,${timestamp}
+Format,${exportData.format}
+Status,${exportData.status}
+User ID,${exportData.userId}
+Export ID,${exportData.id}
+    `;
+  }
+}
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

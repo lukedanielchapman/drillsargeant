@@ -97,10 +97,22 @@ class ApiService {
     return response.json();
   }
 
-  async exportAnalyticsReport(): Promise<any> {
+  async exportAnalytics(format: 'pdf' | 'excel' = 'pdf'): Promise<any> {
     const response = await this.makeRequest('/api/analytics/export', {
       method: 'POST',
+      body: JSON.stringify({ format })
     });
+    return response.json();
+  }
+
+  // Export functionality
+  async downloadReport(exportId: string): Promise<Blob> {
+    const response = await this.makeRequest(`/api/exports/${exportId}/download`);
+    return response.blob();
+  }
+
+  async getExportStatus(exportId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/exports/${exportId}/status`);
     return response.json();
   }
 
