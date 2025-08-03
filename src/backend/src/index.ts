@@ -6,17 +6,17 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import { authenticateToken, optionalAuth } from './middleware/auth';
 import { db } from './config/firebase';
+import * as functions from 'firebase-functions';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3002;
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3003',
+  origin: process.env.CORS_ORIGIN || 'https://drillsargeant-19d36.web.app',
   credentials: true
 }));
 app.use(compression());
@@ -146,6 +146,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-app.listen(PORT, () => {
-  console.log(`DrillSargeant Backend running on port ${PORT}`);
-}); 
+// Export for Firebase Functions
+export const api = functions.https.onRequest(app);
+
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 3002;
+  app.listen(PORT, () => {
+    console.log(`DrillSargeant Backend running on port ${PORT}`);
+  });
+} 

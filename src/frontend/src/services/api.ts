@@ -1,6 +1,6 @@
 import { auth } from '../config/firebase';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://us-central1-drillsargeant-19d36.cloudfunctions.net/api';
 
 class ApiService {
   private async getAuthToken(): Promise<string | null> {
