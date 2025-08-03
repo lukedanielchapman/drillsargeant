@@ -149,8 +149,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Export for Firebase Functions
 export const api = functions.https.onRequest(app);
 
-// For local development
-if (process.env.NODE_ENV !== 'production') {
+// For local development only
+if (process.env.NODE_ENV === 'development' && process.env.RUN_LOCAL === 'true') {
   const PORT = process.env.PORT || 3002;
   app.listen(PORT, () => {
     console.log(`DrillSargeant Backend running on port ${PORT}`);
