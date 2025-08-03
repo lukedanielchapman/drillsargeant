@@ -1,0 +1,14 @@
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=AIzaSyANhKjZ2d9XWh7mJs3uVSD7n3qbetyBlZs
+VITE_FIREBASE_AUTH_DOMAIN=drillsargeant-19d36.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=drillsargeant-19d36
+VITE_FIREBASE_STORAGE_BUCKET=drillsargeant-19d36.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=930934013813
+VITE_FIREBASE_APP_ID=1:930934013813:web:1a2a32226b2d752ed7dd3c
+
+# Application Configuration
+VITE_API_URL=http://localhost:3001
+VITE_ENVIRONMENT=development
+
+# Analytics (optional)
+VITE_GA_TRACKING_ID=your_ga_tracking_id 

@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@/components/*": ["src/frontend/components/*"],
+      "@/pages/*": ["src/frontend/pages/*"],
+      "@/services/*": ["src/frontend/services/*"],
+      "@/utils/*": ["src/frontend/utils/*"],
+      "@/types/*": ["src/frontend/types/*"],
+      "@/api/*": ["src/backend/*"],
+      "@/controllers/*": ["src/backend/controllers/*"],
+      "@/middleware/*": ["src/backend/middleware/*"]
+    }
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ]
+} 

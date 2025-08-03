@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrillSargeant Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .endpoint {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 DrillSargeant Backend Test</h1>
+        
+        <h2>Backend Status</h2>
+        <div id="backendStatus" class="status">Checking...</div>
+        
+        <h2>API Endpoints</h2>
+        <div class="endpoint">GET /health - Health check endpoint</div>
+        <div class="endpoint">GET /api/status - API status endpoint</div>
+        
+        <h2>Test Actions</h2>
+        <button onclick="testBackend()">Test Backend Connection</button>
+        <button onclick="testHealth()">Test Health Endpoint</button>
+        <button onclick="testAPIStatus()">Test API Status</button>
+        
+        <h2>Response Log</h2>
+        <div id="responseLog" style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        
+        function log(message) {
+            const logDiv = document.getElementById('responseLog');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        async function testBackend() {
+            try {
+                log('Testing backend connection...');
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Backend is running! Response: ${JSON.stringify(data, null, 2)}`);
+                    document.getElementById('backendStatus').className = 'status success';
+                    document.getElementById('backendStatus').textContent = '✅ Backend is running on port 3001';
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`❌ Backend connection failed: ${error.message}`);
+                document.getElementById('backendStatus').className = 'status error';
+                document.getElementById('backendStatus').textContent = '❌ Backend connection failed';
+            }
+        }
+        
+        async function testHealth() {
+            try {
+                log('Testing /health endpoint...');
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                log(`✅ Health endpoint response: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`❌ Health endpoint failed: ${error.message}`);
+            }
+        }
+        
+        async function testAPIStatus() {
+            try {
+                log('Testing /api/status endpoint...');
+                const response = await fetch(`${API_BASE}/api/status`);
+                const data = await response.json();
+                log(`✅ API status response: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`❌ API status endpoint failed: ${error.message}`);
+            }
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            log('DrillSargeant Backend Test Page Loaded');
+            testBackend();
+        };
+    </script>
+</body>
+</html> 
