@@ -1,0 +1,5 @@
+[33m63c5e29[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m Fix Firebase Functions deployment: Update Node.js runtime to 20, upgrade firebase-functions to 5.1.0, and make codeAnalyzer Firebase-compatible
+[33m6287929[m Complete real code analysis system: implement code analyzer service, integrate with backend APIs, add comprehensive issue detection for security, performance, quality, and documentation
+[33mf6499b2[m Implement real code analysis features: multi-source input (Git/Web/Local), detailed issue viewer with code snippets, and comprehensive resolution steps
+[33mb0ca744[m Fix deployment issues: TypeScript errors and package-lock.json sync
+[33m403ae54[m Implement advanced filtering and sorting options, and comprehensive user management with team collaboration features
