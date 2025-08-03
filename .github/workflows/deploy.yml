@@ -57,6 +57,8 @@ jobs:
     
     - name: Deploy Firebase Functions
       run: |
+        echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > service-account.json
+        export GOOGLE_APPLICATION_CREDENTIALS=service-account.json
         npx firebase-tools@latest deploy --only functions --project drillsargeant-19d36 --non-interactive
       env:
-        FIREBASE_TOKEN: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' 
+        GOOGLE_APPLICATION_CREDENTIALS: service-account.json 
