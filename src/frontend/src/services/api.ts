@@ -140,6 +140,64 @@ class ApiService {
     return response.json();
   }
 
+  // User Management API
+  async getUsers(): Promise<any[]> {
+    const response = await this.makeRequest('/api/users');
+    return response.json();
+  }
+
+  async createUser(userData: any): Promise<any> {
+    const response = await this.makeRequest('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    });
+    return response.json();
+  }
+
+  async updateUser(userId: string, userData: any): Promise<any> {
+    const response = await this.makeRequest(`/api/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData)
+    });
+    return response.json();
+  }
+
+  async deleteUser(userId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/users/${userId}`, {
+      method: 'DELETE'
+    });
+    return response.json();
+  }
+
+  // Team Management API
+  async getTeams(): Promise<any[]> {
+    const response = await this.makeRequest('/api/teams');
+    return response.json();
+  }
+
+  async createTeam(teamData: any): Promise<any> {
+    const response = await this.makeRequest('/api/teams', {
+      method: 'POST',
+      body: JSON.stringify(teamData)
+    });
+    return response.json();
+  }
+
+  async updateTeam(teamId: string, teamData: any): Promise<any> {
+    const response = await this.makeRequest(`/api/teams/${teamId}`, {
+      method: 'PUT',
+      body: JSON.stringify(teamData)
+    });
+    return response.json();
+  }
+
+  async deleteTeam(teamId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/teams/${teamId}`, {
+      method: 'DELETE'
+    });
+    return response.json();
+  }
+
   // Auth test
   async testAuth(): Promise<any> {
     const response = await this.makeRequest('/api/auth/test');

@@ -3,250 +3,285 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  Button,
-  Box,
-  Typography,
-  Alert,
-  CircularProgress,
-  IconButton,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
-  Card,
-  CardContent,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
+  Chip,
+  Typography,
+  Box,
+  IconButton,
+  Button,
   TextField,
-  InputAdornment,
-  Badge,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Grid,
+  Card,
+  CardContent,
+  Alert,
+  CircularProgress,
+  Tooltip,
+  Divider,
+  Collapse,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Slider,
+  FormControlLabel,
+  Checkbox,
+  Switch
 } from '@mui/material';
-import { 
-  Close, 
-  BugReport, 
-  Search, 
-  FilterList,
-  ExpandMore,
+import {
+  Close,
+  BugReport,
   Error,
   Warning,
   Info,
-  CheckCircle,
-  Security,
-  Speed,
-  Code,
-  Description
+  Search,
+  FilterList,
+  Sort,
+  CalendarToday,
+  ExpandMore,
+  Clear,
+  Refresh,
+  TrendingUp,
+  TrendingDown
 } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import apiService from '../../services/api';
+
+interface Issue {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  type: 'security' | 'performance' | 'quality' | 'documentation';
+  status: 'open' | 'in-progress' | 'resolved' | 'closed';
+  filePath: string;
+  lineNumber: number;
+  createdAt: string;
+  updatedAt: string;
+  projectId: string;
+  assessmentId: string;
+}
 
 interface IssuesListProps {
   open: boolean;
   onClose: () => void;
 }
 
-interface Issue {
-  id: string;
-  title: string;
-  description: string;
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
-  type: 'security' | 'performance' | 'quality' | 'documentation';
-  status: 'open' | 'in-progress' | 'resolved' | 'ignored';
+interface FilterState {
+  search: string;
+  severity: string[];
+  type: string[];
+  status: string[];
+  dateRange: {
+    start: Date | null;
+    end: Date | null;
+  };
   projectId: string;
-  projectName: string;
-  assessmentId: string;
-  createdAt: string;
-  filePath?: string;
-  lineNumber?: number;
-  codeSnippet?: string;
-  recommendation?: string;
+  minScore: number;
+  maxScore: number;
 }
 
-const SEVERITY_COLORS = {
-  critical: 'error',
-  high: 'error',
-  medium: 'warning',
-  low: 'info',
-  info: 'default'
-} as const;
-
-const TYPE_ICONS = {
-  security: <Security />,
-  performance: <Speed />,
-  quality: <Code />,
-  documentation: <Description />
-} as const;
-
-const MOCK_ISSUES: Issue[] = [
-  {
-    id: '1',
-    title: 'SQL Injection Vulnerability',
-    description: 'User input is directly concatenated into SQL queries without proper sanitization, creating a potential SQL injection vulnerability.',
-    severity: 'critical',
-    type: 'security',
-    status: 'open',
-    projectId: 'project-1',
-    projectName: 'E-commerce Platform',
-    assessmentId: 'assessment-1',
-    createdAt: '2024-01-15T10:30:00Z',
-    filePath: 'src/api/users.js',
-    lineNumber: 45,
-    codeSnippet: 'const query = `SELECT * FROM users WHERE id = ${userId}`;',
-    recommendation: 'Use parameterized queries or an ORM to prevent SQL injection attacks.'
-  },
-  {
-    id: '2',
-    title: 'Memory Leak in Event Listeners',
-    description: 'Event listeners are not properly removed when components unmount, leading to memory leaks.',
-    severity: 'high',
-    type: 'performance',
-    status: 'open',
-    projectId: 'project-1',
-    projectName: 'E-commerce Platform',
-    assessmentId: 'assessment-1',
-    createdAt: '2024-01-15T10:30:00Z',
-    filePath: 'src/components/ProductList.jsx',
-    lineNumber: 23,
-    codeSnippet: 'window.addEventListener("resize", handleResize);',
-    recommendation: 'Remove event listeners in useEffect cleanup function or componentWillUnmount.'
-  },
-  {
-    id: '3',
-    title: 'Missing Error Handling',
-    description: 'API calls lack proper error handling, which could cause the application to crash.',
-    severity: 'medium',
-    type: 'quality',
-    status: 'in-progress',
-    projectId: 'project-1',
-    projectName: 'E-commerce Platform',
-    assessmentId: 'assessment-1',
-    createdAt: '2024-01-15T10:30:00Z',
-    filePath: 'src/services/api.js',
-    lineNumber: 67,
-    codeSnippet: 'const response = await fetch(url);',
-    recommendation: 'Wrap API calls in try-catch blocks and provide user-friendly error messages.'
-  },
-  {
-    id: '4',
-    title: 'Incomplete API Documentation',
-    description: 'API endpoints lack comprehensive documentation, making it difficult for developers to understand usage.',
-    severity: 'low',
-    type: 'documentation',
-    status: 'open',
-    projectId: 'project-1',
-    projectName: 'E-commerce Platform',
-    assessmentId: 'assessment-1',
-    createdAt: '2024-01-15T10:30:00Z',
-    filePath: 'src/api/README.md',
-    lineNumber: 12,
-    codeSnippet: '// TODO: Add API documentation',
-    recommendation: 'Use tools like Swagger/OpenAPI to generate comprehensive API documentation.'
-  }
-];
+interface SortState {
+  field: 'severity' | 'type' | 'status' | 'createdAt' | 'title';
+  direction: 'asc' | 'desc';
+}
 
 const IssuesList: React.FC<IssuesListProps> = ({ open, onClose }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [filteredIssues, setFilteredIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [severityFilter, setSeverityFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Filter and sort states
+  const [filters, setFilters] = useState<FilterState>({
+    search: '',
+    severity: [],
+    type: [],
+    status: [],
+    dateRange: {
+      start: null,
+      end: null
+    },
+    projectId: '',
+    minScore: 0,
+    maxScore: 100
+  });
+  
+  const [sort, setSort] = useState<SortState>({
+    field: 'createdAt',
+    direction: 'desc'
+  });
 
-  useEffect(() => {
-    if (open) {
-      loadIssues();
-    }
-  }, [open]);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+
+  const severityColors = {
+    critical: 'error',
+    high: 'warning',
+    medium: 'info',
+    low: 'success'
+  } as const;
+
+  const severityIcons = {
+    critical: <Error color="error" />,
+    high: <Warning color="warning" />,
+    medium: <Info color="info" />,
+    low: <BugReport color="success" />
+  };
 
   const loadIssues = async () => {
     setLoading(true);
     try {
-      // TODO: Replace with actual API call
-      // const issuesData = await apiService.getIssues();
-      // setIssues(issuesData);
-      
-      // Using mock data for now
-      setTimeout(() => {
-        setIssues(MOCK_ISSUES);
-        setLoading(false);
-      }, 1000);
+      const data = await apiService.getIssues();
+      setIssues(data);
+      setFilteredIssues(data);
     } catch (error) {
       console.error('Error loading issues:', error);
-      setError('Failed to load issues. Please try again.');
+      setError('Failed to load issues');
+    } finally {
       setLoading(false);
     }
   };
 
-  const filteredIssues = issues.filter(issue => {
-    const matchesSearch = issue.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         issue.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSeverity = severityFilter === 'all' || issue.severity === severityFilter;
-    const matchesType = typeFilter === 'all' || issue.type === typeFilter;
-    const matchesStatus = statusFilter === 'all' || issue.status === statusFilter;
-    
-    return matchesSearch && matchesSeverity && matchesType && matchesStatus;
-  });
-
-  const getSeverityIcon = (severity: Issue['severity']) => {
-    switch (severity) {
-      case 'critical':
-      case 'high':
-        return <Error />;
-      case 'medium':
-        return <Warning />;
-      case 'low':
-        return <Info />;
-      case 'info':
-        return <CheckCircle />;
-      default:
-        return <Info />;
+  const loadProjects = async () => {
+    try {
+      const data = await apiService.getProjects();
+      setProjects(data);
+    } catch (error) {
+      console.error('Error loading projects:', error);
     }
   };
 
-  const getStatusColor = (status: Issue['status']) => {
-    switch (status) {
-      case 'open':
-        return 'error';
-      case 'in-progress':
-        return 'warning';
-      case 'resolved':
-        return 'success';
-      case 'ignored':
-        return 'default';
-      default:
-        return 'default';
+  // Apply filters and sorting
+  useEffect(() => {
+    let filtered = [...issues];
+
+    // Search filter
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(issue =>
+        issue.title.toLowerCase().includes(searchLower) ||
+        issue.description.toLowerCase().includes(searchLower) ||
+        issue.filePath.toLowerCase().includes(searchLower)
+      );
     }
+
+    // Severity filter
+    if (filters.severity.length > 0) {
+      filtered = filtered.filter(issue => filters.severity.includes(issue.severity));
+    }
+
+    // Type filter
+    if (filters.type.length > 0) {
+      filtered = filtered.filter(issue => filters.type.includes(issue.type));
+    }
+
+    // Status filter
+    if (filters.status.length > 0) {
+      filtered = filtered.filter(issue => filters.status.includes(issue.status));
+    }
+
+    // Date range filter
+    if (filters.dateRange.start || filters.dateRange.end) {
+      filtered = filtered.filter(issue => {
+        const issueDate = new Date(issue.createdAt);
+        const startDate = filters.dateRange.start;
+        const endDate = filters.dateRange.end;
+        
+        if (startDate && endDate) {
+          return issueDate >= startDate && issueDate <= endDate;
+        } else if (startDate) {
+          return issueDate >= startDate;
+        } else if (endDate) {
+          return issueDate <= endDate;
+        }
+        return true;
+      });
+    }
+
+    // Project filter
+    if (filters.projectId) {
+      filtered = filtered.filter(issue => issue.projectId === filters.projectId);
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let aValue: any = a[sort.field];
+      let bValue: any = b[sort.field];
+      
+      if (sort.field === 'createdAt' || sort.field === 'updatedAt') {
+        aValue = new Date(aValue).getTime();
+        bValue = new Date(bValue).getTime();
+      } else if (sort.field === 'title') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+      
+      if (sort.direction === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+
+    setFilteredIssues(filtered);
+  }, [issues, filters, sort]);
+
+  useEffect(() => {
+    if (open) {
+      loadIssues();
+      loadProjects();
+    }
+  }, [open]);
+
+  const handleFilterChange = (field: keyof FilterState, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
-  const handleIssueClick = (issue: Issue) => {
-    setSelectedIssue(issue);
+  const handleSortChange = (field: SortState['field']) => {
+    setSort(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
-  const handleCloseDetail = () => {
-    setSelectedIssue(null);
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      severity: [],
+      type: [],
+      status: [],
+      dateRange: {
+        start: null,
+        end: null
+      },
+      projectId: '',
+      minScore: 0,
+      maxScore: 100
+    });
   };
 
-  const stats = {
-    total: issues.length,
-    critical: issues.filter(i => i.severity === 'critical').length,
-    high: issues.filter(i => i.severity === 'high').length,
-    medium: issues.filter(i => i.severity === 'medium').length,
-    low: issues.filter(i => i.severity === 'low').length,
-    open: issues.filter(i => i.status === 'open').length,
-    resolved: issues.filter(i => i.status === 'resolved').length
+  const getSeverityCount = (severity: string) => {
+    return issues.filter(issue => issue.severity === severity).length;
+  };
+
+  const getTypeCount = (type: string) => {
+    return issues.filter(issue => issue.type === type).length;
   };
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       maxWidth="lg"
       fullWidth
@@ -255,192 +290,318 @@ const IssuesList: React.FC<IssuesListProps> = ({ open, onClose }) => {
           background: 'rgba(255, 255, 255, 0.05)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: 2,
-          height: '90vh'
         }
       }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        pb: 1
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <BugReport sx={{ color: 'warning.main' }} />
-          <Typography variant="h6">Code Issues</Typography>
-          <Badge badgeContent={stats.total} color="primary" sx={{ ml: 1 }}>
-            <Box />
-          </Badge>
+      <DialogTitle>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BugReport />
+            <Typography variant="h6">Issues Management</Typography>
+            <Chip 
+              label={`${filteredIssues.length} issues`} 
+              size="small" 
+              color="primary" 
+              variant="outlined"
+            />
+          </Box>
+          <IconButton onClick={onClose}>
+            <Close />
+          </IconButton>
         </Box>
-        <IconButton onClick={onClose} size="small">
-          <Close />
-        </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 2 }}>
+      <DialogContent>
+        {/* Search and Filter Bar */}
+        <Box sx={{ mb: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                placeholder="Search issues..."
+                value={filters.search}
+                onChange={(e) => handleFilterChange('search', e.target.value)}
+                InputProps={{
+                  startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant={showFilters ? 'contained' : 'outlined'}
+                  startIcon={<FilterList />}
+                  onClick={() => setShowFilters(!showFilters)}
+                  size="small"
+                >
+                  Filters
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Sort />}
+                  onClick={() => handleSortChange(sort.field)}
+                  size="small"
+                >
+                  {sort.field} {sort.direction === 'asc' ? <TrendingUp /> : <TrendingDown />}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Clear />}
+                  onClick={clearFilters}
+                  size="small"
+                >
+                  Clear
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Refresh />}
+                  onClick={loadIssues}
+                  disabled={loading}
+                  size="small"
+                >
+                  Refresh
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </Box>
+
+        {/* Advanced Filters */}
+        <Collapse in={showFilters}>
+          <Card sx={{ mb: 3, background: 'rgba(255, 255, 255, 0.02)' }}>
+            <CardContent>
+              <Grid container spacing={3}>
+                {/* Severity Filter */}
+                <Grid item xs={12} md={3}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Severity ({issues.length} total)
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {['critical', 'high', 'medium', 'low'].map(severity => (
+                      <FormControlLabel
+                        key={severity}
+                        control={
+                          <Checkbox
+                            checked={filters.severity.includes(severity)}
+                            onChange={(e) => {
+                              const newSeverity = e.target.checked
+                                ? [...filters.severity, severity]
+                                : filters.severity.filter(s => s !== severity);
+                              handleFilterChange('severity', newSeverity);
+                            }}
+                            size="small"
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip 
+                              label={severity} 
+                              size="small" 
+                              color={severityColors[severity as keyof typeof severityColors]}
+                              variant="outlined"
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              ({getSeverityCount(severity)})
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </Box>
+                </Grid>
+
+                {/* Type Filter */}
+                <Grid item xs={12} md={3}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Type
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {['security', 'performance', 'quality', 'documentation'].map(type => (
+                      <FormControlLabel
+                        key={type}
+                        control={
+                          <Checkbox
+                            checked={filters.type.includes(type)}
+                            onChange={(e) => {
+                              const newType = e.target.checked
+                                ? [...filters.type, type]
+                                : filters.type.filter(t => t !== type);
+                              handleFilterChange('type', newType);
+                            }}
+                            size="small"
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {type}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ({getTypeCount(type)})
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </Box>
+                </Grid>
+
+                {/* Status Filter */}
+                <Grid item xs={12} md={3}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Status
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      multiple
+                      value={filters.status}
+                      onChange={(e) => handleFilterChange('status', e.target.value)}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map((value) => (
+                            <Chip key={value} label={value} size="small" />
+                          ))}
+                        </Box>
+                      )}
+                    >
+                      {['open', 'in-progress', 'resolved', 'closed'].map((status) => (
+                        <MenuItem key={status} value={status}>
+                          {status}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Project Filter */}
+                <Grid item xs={12} md={3}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Project
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={filters.projectId}
+                      onChange={(e) => handleFilterChange('projectId', e.target.value)}
+                    >
+                      <MenuItem value="">All Projects</MenuItem>
+                      {projects.map((project) => (
+                        <MenuItem key={project.id} value={project.id}>
+                          {project.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Date Range Filter */}
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Date Range
+                  </Typography>
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <DatePicker
+                          label="Start Date"
+                          value={filters.dateRange.start}
+                          onChange={(date) => handleFilterChange('dateRange', {
+                            ...filters.dateRange,
+                            start: date
+                          })}
+                          slotProps={{
+                            textField: {
+                              size: 'small',
+                              fullWidth: true
+                            }
+                          }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DatePicker
+                          label="End Date"
+                          value={filters.dateRange.end}
+                          onChange={(date) => handleFilterChange('dateRange', {
+                            ...filters.dateRange,
+                            end: date
+                          })}
+                          slotProps={{
+                            textField: {
+                              size: 'small',
+                              fullWidth: true
+                            }
+                          }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </LocalizationProvider>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Collapse>
+
+        {/* Issues List */}
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
 
-        {/* Stats Cards */}
-        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-          <Chip 
-            label={`${stats.critical} Critical`} 
-            color="error" 
-            variant="outlined"
-            icon={<Error />}
-          />
-          <Chip 
-            label={`${stats.high} High`} 
-            color="error" 
-            variant="outlined"
-            icon={<Warning />}
-          />
-          <Chip 
-            label={`${stats.medium} Medium`} 
-            color="warning" 
-            variant="outlined"
-            icon={<Warning />}
-          />
-          <Chip 
-            label={`${stats.low} Low`} 
-            color="info" 
-            variant="outlined"
-            icon={<Info />}
-          />
-          <Chip 
-            label={`${stats.open} Open`} 
-            color="error" 
-            variant="outlined"
-          />
-          <Chip 
-            label={`${stats.resolved} Resolved`} 
-            color="success" 
-            variant="outlined"
-          />
-        </Box>
-
-        {/* Filters */}
-        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-          <TextField
-            placeholder="Search issues..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              ),
-            }}
-          />
-          
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Severity</InputLabel>
-            <Select
-              value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value)}
-              label="Severity"
-            >
-              <MenuItem value="all">All Severities</MenuItem>
-              <MenuItem value="critical">Critical</MenuItem>
-              <MenuItem value="high">High</MenuItem>
-              <MenuItem value="medium">Medium</MenuItem>
-              <MenuItem value="low">Low</MenuItem>
-              <MenuItem value="info">Info</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Type</InputLabel>
-            <Select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              label="Type"
-            >
-              <MenuItem value="all">All Types</MenuItem>
-              <MenuItem value="security">Security</MenuItem>
-              <MenuItem value="performance">Performance</MenuItem>
-              <MenuItem value="quality">Quality</MenuItem>
-              <MenuItem value="documentation">Documentation</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              label="Status"
-            >
-              <MenuItem value="all">All Status</MenuItem>
-              <MenuItem value="open">Open</MenuItem>
-              <MenuItem value="in-progress">In Progress</MenuItem>
-              <MenuItem value="resolved">Resolved</MenuItem>
-              <MenuItem value="ignored">Ignored</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-
-        {/* Issues List */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
           </Box>
         ) : filteredIssues.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="body1" color="text.secondary">
-              {issues.length === 0 ? 'No issues found. Run an assessment to generate issues.' : 'No issues match your filters.'}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+            <BugReport sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+            <Typography variant="body2" color="text.secondary">
+              {filters.search || filters.severity.length > 0 || filters.type.length > 0
+                ? 'No issues match your filters'
+                : 'No issues found'
+              }
             </Typography>
           </Box>
         ) : (
-          <List sx={{ maxHeight: 400, overflow: 'auto' }}>
+          <List sx={{ p: 0 }}>
             {filteredIssues.map((issue, index) => (
               <React.Fragment key={issue.id}>
-                <ListItem 
-                  button 
-                  onClick={() => handleIssueClick(issue)}
-                  sx={{ 
-                    borderRadius: 1, 
+                <ListItem
+                  sx={{
+                    bgcolor: 'rgba(255, 255, 255, 0.02)',
                     mb: 1,
-                    background: 'rgba(255, 255, 255, 0.02)',
+                    borderRadius: 1,
                     '&:hover': {
-                      background: 'rgba(255, 255, 255, 0.05)',
+                      bgcolor: 'rgba(255, 255, 255, 0.05)'
                     }
                   }}
                 >
                   <ListItemIcon>
-                    <Box sx={{ color: `${SEVERITY_COLORS[issue.severity]}.main` }}>
-                      {getSeverityIcon(issue.severity)}
-                    </Box>
+                    {severityIcons[issue.severity]}
                   </ListItemIcon>
+                  
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
                           {issue.title}
                         </Typography>
                         <Chip 
                           label={issue.severity} 
                           size="small" 
-                          color={SEVERITY_COLORS[issue.severity]}
+                          color={severityColors[issue.severity]}
                           variant="outlined"
                         />
                         <Chip 
                           label={issue.type} 
                           size="small" 
+                          color="default"
                           variant="outlined"
-                          icon={TYPE_ICONS[issue.type]}
                         />
                         <Chip 
                           label={issue.status} 
                           size="small" 
-                          color={getStatusColor(issue.status)}
+                          color="primary"
                           variant="outlined"
                         />
                       </Box>
@@ -450,10 +611,14 @@ const IssuesList: React.FC<IssuesListProps> = ({ open, onClose }) => {
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                           {issue.description}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {issue.projectName} • {new Date(issue.createdAt).toLocaleDateString()}
-                          {issue.filePath && ` • ${issue.filePath}:${issue.lineNumber}`}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            📁 {issue.filePath}:{issue.lineNumber}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            📅 {new Date(issue.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
                       </Box>
                     }
                   />
@@ -464,116 +629,6 @@ const IssuesList: React.FC<IssuesListProps> = ({ open, onClose }) => {
           </List>
         )}
       </DialogContent>
-
-      {/* Issue Detail Dialog */}
-      <Dialog
-        open={!!selectedIssue}
-        onClose={handleCloseDetail}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'rgba(255, 255, 255, 0.05)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: 2,
-          }
-        }}
-      >
-        {selectedIssue && (
-          <>
-            <DialogTitle sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              pb: 1
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {getSeverityIcon(selectedIssue.severity)}
-                <Typography variant="h6">{selectedIssue.title}</Typography>
-              </Box>
-              <IconButton onClick={handleCloseDetail} size="small">
-                <Close />
-              </IconButton>
-            </DialogTitle>
-
-            <DialogContent sx={{ pt: 2 }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="body1" sx={{ mb: 2 }}>
-                  {selectedIssue.description}
-                </Typography>
-                
-                <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                  <Chip 
-                    label={selectedIssue.severity} 
-                    color={SEVERITY_COLORS[selectedIssue.severity]}
-                    variant="outlined"
-                  />
-                  <Chip 
-                    label={selectedIssue.type} 
-                    variant="outlined"
-                    icon={TYPE_ICONS[selectedIssue.type]}
-                  />
-                  <Chip 
-                    label={selectedIssue.status} 
-                    color={getStatusColor(selectedIssue.status)}
-                    variant="outlined"
-                  />
-                </Box>
-
-                <Typography variant="caption" color="text.secondary">
-                  Project: {selectedIssue.projectName} • Created: {new Date(selectedIssue.createdAt).toLocaleString()}
-                </Typography>
-              </Box>
-
-              {selectedIssue.filePath && (
-                <Accordion sx={{ mb: 2 }}>
-                  <AccordionSummary expandIcon={<ExpandMore />}>
-                    <Typography variant="subtitle2">Code Location</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'rgba(0,0,0,0.1)', p: 1, borderRadius: 1 }}>
-                      {selectedIssue.filePath}:{selectedIssue.lineNumber}
-                    </Typography>
-                    {selectedIssue.codeSnippet && (
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                          Code Snippet:
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'rgba(0,0,0,0.1)', p: 1, borderRadius: 1 }}>
-                          {selectedIssue.codeSnippet}
-                        </Typography>
-                      </Box>
-                    )}
-                  </AccordionDetails>
-                </Accordion>
-              )}
-
-              {selectedIssue.recommendation && (
-                <Accordion>
-                  <AccordionSummary expandIcon={<ExpandMore />}>
-                    <Typography variant="subtitle2">Recommendation</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Typography variant="body2">
-                      {selectedIssue.recommendation}
-                    </Typography>
-                  </AccordionDetails>
-                </Accordion>
-              )}
-            </DialogContent>
-
-            <DialogActions sx={{ px: 3, pb: 3 }}>
-              <Button onClick={handleCloseDetail}>
-                Close
-              </Button>
-              <Button variant="contained" color="primary">
-                Mark as Resolved
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
     </Dialog>
   );
 };

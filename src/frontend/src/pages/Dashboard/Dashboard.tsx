@@ -28,7 +28,9 @@ import {
   Add,
   Analytics,
   Notifications,
-  NotificationsActive
+  NotificationsActive,
+  People,
+  Group
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
@@ -37,6 +39,7 @@ import AssessmentForm from '../../components/AssessmentForm/AssessmentForm';
 import IssuesList from '../../components/IssuesList/IssuesList';
 import AnalyticsDashboard from '../../components/AnalyticsDashboard/AnalyticsDashboard';
 import NotificationCenter from '../../components/NotificationCenter/NotificationCenter';
+import UserManagement from '../../components/UserManagement/UserManagement';
 import notificationService from '../../services/notificationService';
 
 const Dashboard: React.FC = () => {
@@ -49,6 +52,7 @@ const Dashboard: React.FC = () => {
   const [issuesListOpen, setIssuesListOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const [userManagementOpen, setUserManagementOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -473,6 +477,12 @@ const Dashboard: React.FC = () => {
       <NotificationCenter
         open={notificationCenterOpen}
         onClose={() => setNotificationCenterOpen(false)}
+      />
+
+      {/* User Management Dialog */}
+      <UserManagement
+        open={userManagementOpen}
+        onClose={() => setUserManagementOpen(false)}
       />
 
       {/* Snackbar for notifications */}

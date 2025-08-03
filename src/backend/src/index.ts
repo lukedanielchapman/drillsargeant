@@ -751,6 +751,336 @@ app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// User Management API
+app.get('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin permissions
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData || userData.role !== 'admin') {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const snapshot = await db.collection('users').get();
+    const users: Array<{ id: string; [key: string]: any }> = [];
+    
+    snapshot.forEach(doc => {
+      const userData = doc.data();
+      users.push({
+        id: doc.id,
+        ...userData,
+        // Remove sensitive information
+        password: undefined,
+        tokens: undefined
+      });
+    });
+
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+app.post('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin permissions
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData || userData.role !== 'admin') {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { email, displayName, role, teamId, department } = req.body;
+
+    if (!email || !displayName || !role) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const userDataToSave = {
+      email,
+      displayName,
+      role,
+      status: 'pending',
+      teamId,
+      department,
+      joinDate: new Date().toISOString(),
+      lastActive: new Date().toISOString(),
+      permissions: getPermissionsForRole(role),
+      stats: {
+        projectsCreated: 0,
+        assessmentsRun: 0,
+        issuesResolved: 0,
+        reportsGenerated: 0
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('users').add(userDataToSave);
+
+    res.status(201).json({
+      id: docRef.id,
+      ...userDataToSave
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+app.put('/api/users/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin permissions or is updating their own profile
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData || (userData.role !== 'admin' && userId !== id)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const updateData = {
+      ...req.body,
+      updatedAt: new Date().toISOString()
+    };
+
+    // Remove sensitive fields that shouldn't be updated via this endpoint
+    delete updateData.password;
+    delete updateData.tokens;
+
+    await db.collection('users').doc(id).update(updateData);
+
+    res.json({
+      id,
+      message: 'User updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+app.delete('/api/users/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin permissions
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData || userData.role !== 'admin') {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    // Prevent self-deletion
+    if (userId === id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    await db.collection('users').doc(id).delete();
+
+    res.json({
+      id,
+      message: 'User deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Team Management API
+app.get('/api/teams', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const snapshot = await db.collection('teams').get();
+    const teams: Array<{ id: string; [key: string]: any }> = [];
+    
+    snapshot.forEach(doc => {
+      teams.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    res.json(teams);
+  } catch (error) {
+    console.error('Error fetching teams:', error);
+    res.status(500).json({ error: 'Failed to fetch teams' });
+  }
+});
+
+app.post('/api/teams', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin or manager permissions
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'manager')) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { name, description, members } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Team name is required' });
+    }
+
+    const teamData = {
+      name,
+      description: description || '',
+      members: members || [],
+      projects: [],
+      createdAt: new Date().toISOString(),
+      owner: userId
+    };
+
+    const docRef = await db.collection('teams').add(teamData);
+
+    res.status(201).json({
+      id: docRef.id,
+      ...teamData
+    });
+  } catch (error) {
+    console.error('Error creating team:', error);
+    res.status(500).json({ error: 'Failed to create team' });
+  }
+});
+
+app.put('/api/teams/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin permissions or is team owner
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    const teamDoc = await db.collection('teams').doc(id).get();
+    const teamData = teamDoc.data();
+    
+    if (!userData || (!userData.role === 'admin' && teamData?.owner !== userId)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const updateData = {
+      ...req.body,
+      updatedAt: new Date().toISOString()
+    };
+
+    await db.collection('teams').doc(id).update(updateData);
+
+    res.json({
+      id,
+      message: 'Team updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating team:', error);
+    res.status(500).json({ error: 'Failed to update team' });
+  }
+});
+
+app.delete('/api/teams/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Check if user has admin permissions
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    
+    if (!userData || userData.role !== 'admin') {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    await db.collection('teams').doc(id).delete();
+
+    res.json({
+      id,
+      message: 'Team deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting team:', error);
+    res.status(500).json({ error: 'Failed to delete team' });
+  }
+});
+
+// Helper function to get permissions for a role
+const getPermissionsForRole = (role: string): string[] => {
+  switch (role) {
+    case 'admin':
+      return [
+        'create_projects',
+        'run_assessments',
+        'view_issues',
+        'resolve_issues',
+        'generate_reports',
+        'manage_users',
+        'manage_teams',
+        'system_settings'
+      ];
+    case 'manager':
+      return [
+        'create_projects',
+        'run_assessments',
+        'view_issues',
+        'resolve_issues',
+        'generate_reports',
+        'manage_teams'
+      ];
+    case 'developer':
+      return [
+        'create_projects',
+        'run_assessments',
+        'view_issues',
+        'resolve_issues'
+      ];
+    case 'viewer':
+      return [
+        'view_issues'
+      ];
+    default:
+      return [];
+  }
+};
+
 // Helper function to generate mock report content
 function generateMockReport(exportData: any): string {
   const timestamp = new Date(exportData.timestamp).toLocaleString();
