@@ -68,7 +68,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const handleNotification = (notification: any) => {
       setUnreadNotifications(prev => prev + 1);
-      
+
       // Show snackbar for important notifications
       if (notification.type === 'assessment_completed' || notification.type === 'export_completed') {
         setSnackbar({
@@ -80,10 +80,10 @@ const Dashboard: React.FC = () => {
     };
 
     notificationService.onNotification(handleNotification);
-    
-    // Connect to notification service
-    notificationService.connect().catch(console.error);
-    
+
+    // Start polling for notifications
+    notificationService.startPolling();
+
     // Load initial unread count
     notificationService.getNotifications(50, true).then(notifications => {
       setUnreadNotifications(notifications.length);
@@ -91,6 +91,7 @@ const Dashboard: React.FC = () => {
 
     return () => {
       notificationService.offNotification(handleNotification);
+      notificationService.stopPolling();
     };
   }, []);
 
@@ -451,7 +452,6 @@ const Dashboard: React.FC = () => {
       <ProjectForm
         open={projectFormOpen}
         onClose={() => setProjectFormOpen(false)}
-        onSuccess={handleProjectCreated}
       />
 
       {/* Assessment Form Dialog */}
