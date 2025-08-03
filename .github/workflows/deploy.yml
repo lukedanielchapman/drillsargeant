@@ -61,7 +61,6 @@ jobs:
         export GOOGLE_APPLICATION_CREDENTIALS=service-account.json
         gcloud auth activate-service-account --key-file=service-account.json
         gcloud config set project drillsargeant-19d36
-        gcloud iam service-accounts add-iam-policy-binding drillsargeant-19d36@appspot.gserviceaccount.com --member="serviceAccount:firebase-adminsdk-fbsvc@drillsargeant-19d36.iam.gserviceaccount.com" --role="roles/iam.serviceAccountUser" --project=drillsargeant-19d36
         unset FIREBASE_TOKEN
         npx firebase-tools@latest deploy --only functions --project drillsargeant-19d36 --non-interactive
       env:
