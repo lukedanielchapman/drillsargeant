@@ -21,7 +21,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  Tabs,
+  Tab
 } from '@mui/material';
 import { 
   Close, 
@@ -35,8 +37,26 @@ import {
   TrendingDown,
   CheckCircle,
   Warning,
-  Error
+  Error,
+  Info
 } from '@mui/icons-material';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 import apiService from '../../services/api';
 
 interface AnalyticsDashboardProps {
@@ -116,10 +136,13 @@ const MOCK_ANALYTICS_DATA: AnalyticsData = {
   ]
 };
 
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+
 const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }) => {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
     if (open) {
@@ -164,7 +187,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
       case 'low':
         return <CheckCircle color="success" />;
       default:
-        return <Info />;
+        return <Error />;
     }
   };
 
@@ -182,6 +205,38 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
         return <Code />;
     }
   };
+
+  // Prepare chart data
+  const trendData = analyticsData?.trends.labels.map((label, index) => ({
+    month: label,
+    security: analyticsData.trends.security[index],
+    performance: analyticsData.trends.performance[index],
+    quality: analyticsData.trends.quality[index],
+    documentation: analyticsData.trends.documentation[index]
+  })) || [];
+
+  const scoreData = analyticsData ? [
+    { name: 'Security', value: analyticsData.scores.security, color: '#FF6B6B' },
+    { name: 'Performance', value: analyticsData.scores.performance, color: '#4ECDC4' },
+    { name: 'Quality', value: analyticsData.scores.quality, color: '#45B7D1' },
+    { name: 'Documentation', value: analyticsData.scores.documentation, color: '#96CEB4' }
+  ] : [];
+
+  const projectChartData = analyticsData?.projectPerformance.map(project => ({
+    name: project.name,
+    score: project.score,
+    issues: project.issues
+  })) || [];
+
+  const issueTypeData = analyticsData?.topIssues.reduce((acc, issue) => {
+    const existing = acc.find(item => item.name === issue.type);
+    if (existing) {
+      existing.value += issue.count;
+    } else {
+      acc.push({ name: issue.type, value: issue.count });
+    }
+    return acc;
+  }, [] as Array<{ name: string; value: number }>) || [];
 
   if (!analyticsData) {
     return null;
@@ -235,261 +290,391 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
             <CircularProgress />
           </Box>
         ) : (
-          <Grid container spacing={3}>
+          <>
             {/* Overview Cards */}
-            <Grid item xs={12}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    <CardContent>
-                      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-                        {analyticsData.overview.totalProjects}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card sx={{ 
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                }}>
+                  <CardContent>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+                      {analyticsData.overview.totalProjects}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Projects
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card sx={{ 
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                }}>
+                  <CardContent>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+                      {analyticsData.overview.totalAssessments}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Assessments Run
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card sx={{ 
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                }}>
+                  <CardContent>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+                      {analyticsData.overview.totalIssues}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Issues Found
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card sx={{ 
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Typography variant="h4" sx={{ fontWeight: 600 }}>
+                        {analyticsData.overview.averageScore}%
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Projects
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    <CardContent>
-                      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-                        {analyticsData.overview.totalAssessments}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Assessments Run
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    <CardContent>
-                      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-                        {analyticsData.overview.totalIssues}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Issues Found
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                          {analyticsData.overview.averageScore}%
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {analyticsData.overview.improvementTrend > 0 ? (
+                          <TrendingUp color="success" />
+                        ) : (
+                          <TrendingDown color="error" />
+                        )}
+                        <Typography variant="caption" color={analyticsData.overview.improvementTrend > 0 ? 'success.main' : 'error.main'}>
+                          {Math.abs(analyticsData.overview.improvementTrend)}%
                         </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {analyticsData.overview.improvementTrend > 0 ? (
-                            <TrendingUp color="success" />
-                          ) : (
-                            <TrendingDown color="error" />
-                          )}
-                          <Typography variant="caption" color={analyticsData.overview.improvementTrend > 0 ? 'success.main' : 'error.main'}>
-                            {Math.abs(analyticsData.overview.improvementTrend)}%
-                          </Typography>
-                        </Box>
                       </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Average Score
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Average Score
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Tabs for different chart views */}
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+              <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+                <Tab label="Trends" />
+                <Tab label="Scores" />
+                <Tab label="Projects" />
+                <Tab label="Issues" />
+              </Tabs>
+            </Box>
+
+            {/* Chart Content */}
+            {activeTab === 0 && (
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                  }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                        Performance Trends Over Time
                       </Typography>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <AreaChart data={trendData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis 
+                            dataKey="month" 
+                            stroke="rgba(255,255,255,0.7)"
+                            tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                          />
+                          <YAxis 
+                            stroke="rgba(255,255,255,0.7)"
+                            tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                          />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(0,0,0,0.8)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Legend />
+                          <Area 
+                            type="monotone" 
+                            dataKey="security" 
+                            stackId="1" 
+                            stroke="#FF6B6B" 
+                            fill="#FF6B6B" 
+                            fillOpacity={0.6}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="performance" 
+                            stackId="1" 
+                            stroke="#4ECDC4" 
+                            fill="#4ECDC4" 
+                            fillOpacity={0.6}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="quality" 
+                            stackId="1" 
+                            stroke="#45B7D1" 
+                            fill="#45B7D1" 
+                            fillOpacity={0.6}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="documentation" 
+                            stackId="1" 
+                            stroke="#96CEB4" 
+                            fill="#96CEB4" 
+                            fillOpacity={0.6}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </CardContent>
                   </Card>
                 </Grid>
               </Grid>
-            </Grid>
+            )}
 
-            {/* Score Breakdown */}
-            <Grid item xs={12} md={6}>
-              <Card sx={{ 
-                background: 'rgba(255, 255, 255, 0.05)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                height: '100%'
-              }}>
-                <CardContent>
-                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-                    Score Breakdown
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {Object.entries(analyticsData.scores).map(([key, score]) => (
-                      <Box key={key}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {getTypeIcon(key)}
-                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                              {key}
-                            </Typography>
-                          </Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {score}%
-                          </Typography>
-                        </Box>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={score}
-                          color={getScoreColor(score)}
-                          sx={{ height: 8, borderRadius: 4 }}
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Top Issues */}
-            <Grid item xs={12} md={6}>
-              <Card sx={{ 
-                background: 'rgba(255, 255, 255, 0.05)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                height: '100%'
-              }}>
-                <CardContent>
-                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-                    Top Issues
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {analyticsData.topIssues.map((issue) => (
-                      <Box key={issue.id} sx={{ 
-                        p: 2, 
-                        borderRadius: 1, 
-                        bgcolor: 'rgba(255, 255, 255, 0.02)',
-                        border: '1px solid rgba(255, 255, 255, 0.05)'
-                      }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
-                            {issue.title}
-                          </Typography>
-                          <Chip 
-                            label={issue.count} 
-                            size="small" 
-                            color="primary"
-                            variant="outlined"
-                          />
-                        </Box>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                          {getSeverityIcon(issue.severity)}
-                          <Chip 
-                            label={issue.severity} 
-                            size="small" 
-                            variant="outlined"
-                            sx={{ fontSize: '0.7rem' }}
-                          />
-                          {getTypeIcon(issue.type)}
-                          <Chip 
-                            label={issue.type} 
-                            size="small" 
-                            variant="outlined"
-                            sx={{ fontSize: '0.7rem' }}
-                          />
-                        </Box>
-                      </Box>
-                    ))}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Project Performance Table */}
-            <Grid item xs={12}>
-              <Card sx={{ 
-                background: 'rgba(255, 255, 255, 0.05)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}>
-                <CardContent>
-                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-                    Project Performance
-                  </Typography>
-                  <TableContainer component={Paper} sx={{ 
-                    background: 'transparent',
-                    boxShadow: 'none'
+            {activeTab === 1 && (
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    height: '100%'
                   }}>
-                    <Table>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>Project</TableCell>
-                          <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>Score</TableCell>
-                          <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>Issues</TableCell>
-                          <TableCell sx={{ color: 'text.secondary', fontWeight: 600 }}>Last Assessment</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {analyticsData.projectPerformance.map((project) => (
-                          <TableRow key={project.id} sx={{ 
-                            '&:hover': { 
-                              bgcolor: 'rgba(255, 255, 255, 0.02)' 
-                            }
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                        Score Breakdown
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={scoreData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="rgba(255,255,255,0.7)"
+                            tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                          />
+                          <YAxis 
+                            stroke="rgba(255,255,255,0.7)"
+                            tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                          />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(0,0,0,0.8)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Bar dataKey="value" fill="#8884d8" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    height: '100%'
+                  }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                        Score Distribution
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={scoreData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                                                         label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {scoreData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(0,0,0,0.8)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: '8px'
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            )}
+
+            {activeTab === 2 && (
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                  }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                        Project Performance Comparison
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={projectChartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="rgba(255,255,255,0.7)"
+                            tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                          />
+                          <YAxis 
+                            stroke="rgba(255,255,255,0.7)"
+                            tick={{ fill: 'rgba(255,255,255,0.7)' }}
+                          />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(0,0,0,0.8)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Legend />
+                          <Bar dataKey="score" fill="#8884d8" name="Score (%)" />
+                          <Bar dataKey="issues" fill="#82ca9d" name="Issues" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            )}
+
+            {activeTab === 3 && (
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    height: '100%'
+                  }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                        Issue Types Distribution
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={issueTypeData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                                                         label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {issueTypeData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(0,0,0,0.8)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: '8px'
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    height: '100%'
+                  }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                        Top Issues
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {analyticsData.topIssues.map((issue) => (
+                          <Box key={issue.id} sx={{ 
+                            p: 2, 
+                            borderRadius: 1, 
+                            bgcolor: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid rgba(255, 255, 255, 0.05)'
                           }}>
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                {project.name}
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
+                                {issue.title}
                               </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {project.score}%
-                                </Typography>
-                                <Box sx={{ 
-                                  width: 60, 
-                                  height: 6, 
-                                  borderRadius: 3,
-                                  bgcolor: 'rgba(255, 255, 255, 0.1)',
-                                  overflow: 'hidden'
-                                }}>
-                                  <Box sx={{ 
-                                    width: `${project.score}%`, 
-                                    height: '100%',
-                                    bgcolor: `${getScoreColor(project.score)}.main`,
-                                    transition: 'width 0.3s ease'
-                                  }} />
-                                </Box>
-                              </Box>
-                            </TableCell>
-                            <TableCell>
                               <Chip 
-                                label={project.issues} 
+                                label={issue.count} 
                                 size="small" 
-                                color={project.issues > 10 ? 'error' : project.issues > 5 ? 'warning' : 'success'}
+                                color="primary"
                                 variant="outlined"
                               />
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {new Date(project.lastAssessment).toLocaleDateString()}
-                              </Typography>
-                            </TableCell>
-                          </TableRow>
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                              {getSeverityIcon(issue.severity)}
+                              <Chip 
+                                label={issue.severity} 
+                                size="small" 
+                                variant="outlined"
+                                sx={{ fontSize: '0.7rem' }}
+                              />
+                              {getTypeIcon(issue.type)}
+                              <Chip 
+                                label={issue.type} 
+                                size="small" 
+                                variant="outlined"
+                                sx={{ fontSize: '0.7rem' }}
+                              />
+                            </Box>
+                          </Box>
                         ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            )}
+          </>
         )}
       </DialogContent>
 
