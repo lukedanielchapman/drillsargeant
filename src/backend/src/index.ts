@@ -305,33 +305,44 @@ app.get('/api/assessments/:id', authenticateToken, async (req, res) => {
 app.get('/api/issues', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
-    const { projectId, severity, type, status } = req.query;
-    
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const { projectId, assessmentId, severity, type, status } = req.query;
+
     let query = db.collection('issues').where('userId', '==', userId);
-    
+
     if (projectId) {
       query = query.where('projectId', '==', projectId);
     }
+
+    if (assessmentId) {
+      query = query.where('assessmentId', '==', assessmentId);
+    }
+
     if (severity) {
       query = query.where('severity', '==', severity);
     }
+
     if (type) {
       query = query.where('type', '==', type);
     }
+
     if (status) {
       query = query.where('status', '==', status);
     }
-    
+
     const snapshot = await query.get();
-    
-    const issues = [];
+
+    const issues: Array<{ id: string; [key: string]: any }> = [];
     snapshot.forEach(doc => {
       issues.push({
         id: doc.id,
         ...doc.data()
       });
     });
-    
+
     res.json(issues);
   } catch (error) {
     console.error('Error fetching issues:', error);
@@ -993,7 +1004,7 @@ app.put('/api/teams/:id', authenticateToken, async (req, res) => {
     const teamDoc = await db.collection('teams').doc(id).get();
     const teamData = teamDoc.data();
     
-    if (!userData || (!userData.role === 'admin' && teamData?.owner !== userId)) {
+    if (!userData || (userData.role !== 'admin' && teamData?.owner !== userId)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
