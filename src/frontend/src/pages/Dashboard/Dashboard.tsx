@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
 import ProjectForm from '../../components/ProjectForm/ProjectForm';
 import AssessmentForm from '../../components/AssessmentForm/AssessmentForm';
+import IssuesList from '../../components/IssuesList/IssuesList';
 
 const Dashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
@@ -37,6 +38,7 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [assessmentFormOpen, setAssessmentFormOpen] = useState(false);
+  const [issuesListOpen, setIssuesListOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -78,11 +80,7 @@ const Dashboard: React.FC = () => {
         setAssessmentFormOpen(true);
         break;
       case 'view-issues':
-        setSnackbar({
-          open: true,
-          message: 'View Issues feature coming soon!',
-          severity: 'info'
-        });
+        setIssuesListOpen(true);
         break;
       case 'analytics':
         setSnackbar({
@@ -415,6 +413,12 @@ const Dashboard: React.FC = () => {
         open={assessmentFormOpen}
         onClose={() => setAssessmentFormOpen(false)}
         onSuccess={handleAssessmentCreated}
+      />
+
+      {/* Issues List Dialog */}
+      <IssuesList
+        open={issuesListOpen}
+        onClose={() => setIssuesListOpen(false)}
       />
 
       {/* Snackbar for notifications */}

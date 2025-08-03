@@ -72,6 +72,25 @@ class ApiService {
     return response.json();
   }
 
+  // Issues
+  async getIssues(): Promise<any[]> {
+    const response = await this.makeRequest('/api/issues');
+    return response.json();
+  }
+
+  async getIssue(issueId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/issues/${issueId}`);
+    return response.json();
+  }
+
+  async updateIssueStatus(issueId: string, status: string): Promise<any> {
+    const response = await this.makeRequest(`/api/issues/${issueId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    return response.json();
+  }
+
   // Auth test
   async testAuth(): Promise<any> {
     const response = await this.makeRequest('/api/auth/test');
