@@ -28,6 +28,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
 import ProjectForm from '../../components/ProjectForm/ProjectForm';
+import AssessmentForm from '../../components/AssessmentForm/AssessmentForm';
 
 const Dashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
@@ -35,6 +36,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [projectFormOpen, setProjectFormOpen] = useState(false);
+  const [assessmentFormOpen, setAssessmentFormOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -73,11 +75,7 @@ const Dashboard: React.FC = () => {
         setProjectFormOpen(true);
         break;
       case 'run-assessment':
-        setSnackbar({
-          open: true,
-          message: 'Run Assessment feature coming soon!',
-          severity: 'info'
-        });
+        setAssessmentFormOpen(true);
         break;
       case 'view-issues':
         setSnackbar({
@@ -105,6 +103,15 @@ const Dashboard: React.FC = () => {
       severity: 'success'
     });
     // TODO: Refresh projects list or navigate to project detail
+  };
+
+  const handleAssessmentCreated = (assessment: any) => {
+    setSnackbar({
+      open: true,
+      message: `Assessment completed successfully! View results in the Issues section.`,
+      severity: 'success'
+    });
+    // TODO: Navigate to assessment results or issues page
   };
 
   const handleCloseSnackbar = () => {
@@ -401,6 +408,13 @@ const Dashboard: React.FC = () => {
         open={projectFormOpen}
         onClose={() => setProjectFormOpen(false)}
         onSuccess={handleProjectCreated}
+      />
+
+      {/* Assessment Form Dialog */}
+      <AssessmentForm
+        open={assessmentFormOpen}
+        onClose={() => setAssessmentFormOpen(false)}
+        onSuccess={handleAssessmentCreated}
       />
 
       {/* Snackbar for notifications */}
