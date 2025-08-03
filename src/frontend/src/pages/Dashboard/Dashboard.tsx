@@ -1,29 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Card, 
-  CardContent, 
-  Button, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Button,
+  Alert,
   CircularProgress,
   Chip,
   IconButton,
   Avatar,
   Divider,
-  Snackbar
+  Snackbar,
+  Badge
 } from '@mui/material';
-import { 
-  Code, 
-  Assessment, 
-  BugReport, 
-  TrendingUp, 
+import {
+  Code,
+  Assessment,
+  BugReport,
+  TrendingUp,
   Settings,
   Logout,
   CheckCircle,
   Error,
-  Refresh
+  Refresh,
+  Add,
+  Analytics,
+  Notifications,
+  NotificationsActive
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
@@ -31,6 +36,8 @@ import ProjectForm from '../../components/ProjectForm/ProjectForm';
 import AssessmentForm from '../../components/AssessmentForm/AssessmentForm';
 import IssuesList from '../../components/IssuesList/IssuesList';
 import AnalyticsDashboard from '../../components/AnalyticsDashboard/AnalyticsDashboard';
+import NotificationCenter from '../../components/NotificationCenter/NotificationCenter';
+import notificationService from '../../services/notificationService';
 
 const Dashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
@@ -41,6 +48,8 @@ const Dashboard: React.FC = () => {
   const [assessmentFormOpen, setAssessmentFormOpen] = useState(false);
   const [issuesListOpen, setIssuesListOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -49,6 +58,36 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     testApiConnection();
+  }, []);
+
+  // Handle real-time notifications
+  useEffect(() => {
+    const handleNotification = (notification: any) => {
+      setUnreadNotifications(prev => prev + 1);
+      
+      // Show snackbar for important notifications
+      if (notification.type === 'assessment_completed' || notification.type === 'export_completed') {
+        setSnackbar({
+          open: true,
+          message: notification.data.message,
+          severity: 'success'
+        });
+      }
+    };
+
+    notificationService.onNotification(handleNotification);
+    
+    // Connect to notification service
+    notificationService.connect().catch(console.error);
+    
+    // Load initial unread count
+    notificationService.getNotifications(50, true).then(notifications => {
+      setUnreadNotifications(notifications.length);
+    }).catch(console.error);
+
+    return () => {
+      notificationService.offNotification(handleNotification);
+    };
   }, []);
 
   const testApiConnection = async () => {
@@ -112,6 +151,11 @@ const Dashboard: React.FC = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const handleNotificationCenterOpen = () => {
+    setNotificationCenterOpen(true);
+    setUnreadNotifications(0); // Reset unread count when opening
   };
 
   const quickActions = [
@@ -423,6 +467,12 @@ const Dashboard: React.FC = () => {
       <AnalyticsDashboard
         open={analyticsOpen}
         onClose={() => setAnalyticsOpen(false)}
+      />
+
+      {/* Notification Center Dialog */}
+      <NotificationCenter
+        open={notificationCenterOpen}
+        onClose={() => setNotificationCenterOpen(false)}
       />
 
       {/* Snackbar for notifications */}

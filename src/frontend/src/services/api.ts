@@ -116,6 +116,30 @@ class ApiService {
     return response.json();
   }
 
+  // Notifications API
+  async getNotifications(limit = 50, unreadOnly = false): Promise<any[]> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      unreadOnly: unreadOnly.toString()
+    });
+    const response = await this.makeRequest(`/api/notifications?${params}`);
+    return response.json();
+  }
+
+  async markNotificationAsRead(notificationId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/notifications/${notificationId}/read`, {
+      method: 'PATCH'
+    });
+    return response.json();
+  }
+
+  async deleteNotification(notificationId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/notifications/${notificationId}`, {
+      method: 'DELETE'
+    });
+    return response.json();
+  }
+
   // Auth test
   async testAuth(): Promise<any> {
     const response = await this.makeRequest('/api/auth/test');

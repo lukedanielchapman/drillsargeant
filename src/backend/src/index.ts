@@ -6,11 +6,65 @@ import dotenv from 'dotenv';
 import { authenticateToken, optionalAuth } from './middleware/auth';
 import { db } from './config/firebase';
 import * as functions from 'firebase-functions';
+import { Server as SocketIOServer, Socket } from 'socket.io';
+import { createServer } from 'http';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+const server = createServer(app);
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || 'https://drillsargeant-19d36.web.app',
+    credentials: true
+  }
+});
+
+// Extend Socket interface
+declare module 'socket.io' {
+  interface Socket {
+    userId?: string;
+  }
+}
+
+// Socket.IO connection handling
+io.use(async (socket: Socket, next: (err?: Error) => void) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error('Authentication error'));
+    }
+    
+    // Verify token (simplified for demo)
+    socket.userId = token; // In production, decode JWT token
+    next();
+  } catch (error) {
+    next(new Error('Authentication error'));
+  }
+});
+
+io.on('connection', (socket: Socket) => {
+  console.log(`User ${socket.userId} connected`);
+  
+  // Join user's room for private notifications
+  if (socket.userId) {
+    socket.join(`user_${socket.userId}`);
+  }
+  
+  socket.on('disconnect', () => {
+    console.log(`User ${socket.userId} disconnected`);
+  });
+});
+
+// Helper function to send notifications
+const sendNotification = (userId: string, type: string, data: any) => {
+  io.to(`user_${userId}`).emit('notification', {
+    type,
+    data,
+    timestamp: new Date().toISOString()
+  });
+};
 
 // Middleware
 app.use(helmet());
@@ -93,10 +147,14 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
   }
 });
 
-// Assessments API
+// Enhanced Assessments API with real-time progress
 app.post('/api/assessments', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
     const { projectId, assessmentType, configuration } = req.body;
     
     if (!projectId || !assessmentType) {
@@ -130,45 +188,81 @@ app.post('/api/assessments', authenticateToken, async (req, res) => {
     
     const docRef = await db.collection('assessments').add(assessmentData);
     
-    // Simulate assessment processing
-    setTimeout(async () => {
-      const results = {
-        security: Math.floor(Math.random() * 30) + 70,
-        performance: Math.floor(Math.random() * 30) + 70,
-        quality: Math.floor(Math.random() * 30) + 70,
-        documentation: Math.floor(Math.random() * 30) + 70,
-        issues: [
-          {
-            id: '1',
-            title: 'SQL Injection Vulnerability',
-            description: 'User input is directly concatenated into SQL queries without proper sanitization.',
-            severity: 'critical',
-            type: 'security',
-            filePath: 'src/api/users.js',
-            lineNumber: 45,
-            codeSnippet: 'const query = `SELECT * FROM users WHERE id = ${userId}`;',
-            recommendation: 'Use parameterized queries or an ORM to prevent SQL injection attacks.'
-          },
-          {
-            id: '2',
-            title: 'Memory Leak in Event Listeners',
-            description: 'Event listeners are not properly removed when components unmount.',
-            severity: 'high',
-            type: 'performance',
-            filePath: 'src/components/ProductList.jsx',
-            lineNumber: 23,
-            codeSnippet: 'window.addEventListener("resize", handleResize);',
-            recommendation: 'Remove event listeners in useEffect cleanup function.'
-          }
-        ]
-      };
+    // Send initial notification
+    sendNotification(userId, 'assessment_started', {
+      assessmentId: docRef.id,
+      projectId,
+      assessmentType,
+      message: 'Assessment started successfully'
+    });
+    
+    // Simulate assessment processing with real-time updates
+    let progress = 0;
+    const progressInterval = setInterval(async () => {
+      progress += Math.floor(Math.random() * 15) + 5;
+      if (progress > 100) progress = 100;
       
       await docRef.update({
-        status: 'completed',
-        results,
-        completedAt: new Date().toISOString()
+        progress,
+        updatedAt: new Date().toISOString()
       });
-    }, 5000);
+      
+      // Send progress update
+      sendNotification(userId, 'assessment_progress', {
+        assessmentId: docRef.id,
+        progress,
+        message: `Assessment progress: ${progress}%`
+      });
+      
+      if (progress >= 100) {
+        clearInterval(progressInterval);
+        
+        const results = {
+          security: Math.floor(Math.random() * 30) + 70,
+          performance: Math.floor(Math.random() * 30) + 70,
+          quality: Math.floor(Math.random() * 30) + 70,
+          documentation: Math.floor(Math.random() * 30) + 70,
+          issues: [
+            {
+              id: '1',
+              title: 'SQL Injection Vulnerability',
+              description: 'User input is directly concatenated into SQL queries without proper sanitization.',
+              severity: 'critical',
+              type: 'security',
+              filePath: 'src/api/users.js',
+              lineNumber: 45,
+              codeSnippet: 'const query = `SELECT * FROM users WHERE id = ${userId}`;',
+              recommendation: 'Use parameterized queries or an ORM to prevent SQL injection attacks.'
+            },
+            {
+              id: '2',
+              title: 'Memory Leak in Event Listeners',
+              description: 'Event listeners are not properly removed when components unmount.',
+              severity: 'high',
+              type: 'performance',
+              filePath: 'src/components/ProductList.jsx',
+              lineNumber: 23,
+              codeSnippet: 'window.addEventListener("resize", handleResize);',
+              recommendation: 'Remove event listeners in useEffect cleanup function.'
+            }
+          ]
+        };
+        
+        await docRef.update({
+          status: 'completed',
+          results,
+          progress: 100,
+          completedAt: new Date().toISOString()
+        });
+        
+        // Send completion notification
+        sendNotification(userId, 'assessment_completed', {
+          assessmentId: docRef.id,
+          results,
+          message: 'Assessment completed successfully!'
+        });
+      }
+    }, 2000);
     
     res.status(201).json({
       id: docRef.id,
@@ -552,6 +646,111 @@ app.get('/api/exports/:id/download', authenticateToken, async (req, res) => {
   }
 });
 
+// Notifications API
+app.get('/api/notifications', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    const { limit = 50, unreadOnly = false } = req.query;
+    
+    let query = db.collection('notifications')
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(Number(limit));
+    
+    if (unreadOnly === 'true') {
+      query = query.where('read', '==', false);
+    }
+    
+    const snapshot = await query.get();
+    
+    const notifications: Array<{ id: string; [key: string]: any }> = [];
+    snapshot.forEach(doc => {
+      notifications.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    res.json(notifications);
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+app.patch('/api/notifications/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    const notificationRef = db.collection('notifications').doc(id);
+    const notificationDoc = await notificationRef.get();
+    
+    if (!notificationDoc.exists) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    
+    const notificationData = notificationDoc.data();
+    if (notificationData?.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    await notificationRef.update({
+      read: true,
+      readAt: new Date().toISOString()
+    });
+    
+    res.json({
+      id,
+      message: 'Notification marked as read'
+    });
+  } catch (error) {
+    console.error('Error updating notification:', error);
+    res.status(500).json({ error: 'Failed to update notification' });
+  }
+});
+
+app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    const notificationRef = db.collection('notifications').doc(id);
+    const notificationDoc = await notificationRef.get();
+    
+    if (!notificationDoc.exists) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    
+    const notificationData = notificationDoc.data();
+    if (notificationData?.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    await notificationRef.delete();
+    
+    res.json({
+      id,
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    res.status(500).json({ error: 'Failed to delete notification' });
+  }
+});
+
 // Helper function to generate mock report content
 function generateMockReport(exportData: any): string {
   const timestamp = new Date(exportData.timestamp).toLocaleString();
@@ -645,7 +844,7 @@ export const api = functions.https.onRequest(app);
 // For local development only
 if (process.env.NODE_ENV === 'development' && process.env.RUN_LOCAL === 'true') {
   const PORT = process.env.PORT || 3002;
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`DrillSargeant Backend running on port ${PORT}`);
   });
 } 
