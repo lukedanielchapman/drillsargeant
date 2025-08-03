@@ -94,14 +94,14 @@ const IssueDetail: React.FC<IssueDetailProps> = ({ open, onClose, issue }) => {
     low: 'success'
   } as const;
 
-  const severityIcons: Record<string, JSX.Element> = {
+  const severityIcons: Record<'critical' | 'high' | 'medium' | 'low', JSX.Element> = {
     critical: <Error color="error" />,
     high: <Warning color="warning" />,
     medium: <Info color="info" />,
     low: <CheckCircle color="success" />
   };
 
-  const typeIcons: Record<string, JSX.Element> = {
+  const typeIcons: Record<'security' | 'performance' | 'quality' | 'documentation', JSX.Element> = {
     security: <Security />,
     performance: <Speed />,
     quality: <Code />,

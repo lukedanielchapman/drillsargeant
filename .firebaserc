@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "drillsargeant-19d36"
+  },
+  "targets": {
+    "drillsargeant-19d36": {
+      "hosting": {
+        "drillsargeant-19d36": [
+          "drillsargeant-19d36"
+        ]
+      }
+    }
   }
 }

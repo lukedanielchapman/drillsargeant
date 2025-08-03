@@ -4,6 +4,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "target": "drillsargeant-19d36",
     "public": "src/frontend/dist",
     "ignore": [
       "firebase.json",
