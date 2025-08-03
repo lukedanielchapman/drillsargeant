@@ -11,7 +11,8 @@ import {
   Chip,
   IconButton,
   Avatar,
-  Divider
+  Divider,
+  Snackbar
 } from '@mui/material';
 import { 
   Code, 
@@ -26,12 +27,19 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
+import ProjectForm from '../../components/ProjectForm/ProjectForm';
 
 const Dashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
   const [apiStatus, setApiStatus] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [projectFormOpen, setProjectFormOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
     testApiConnection();
@@ -59,6 +67,50 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case 'create-project':
+        setProjectFormOpen(true);
+        break;
+      case 'run-assessment':
+        setSnackbar({
+          open: true,
+          message: 'Run Assessment feature coming soon!',
+          severity: 'info'
+        });
+        break;
+      case 'view-issues':
+        setSnackbar({
+          open: true,
+          message: 'View Issues feature coming soon!',
+          severity: 'info'
+        });
+        break;
+      case 'analytics':
+        setSnackbar({
+          open: true,
+          message: 'Analytics feature coming soon!',
+          severity: 'info'
+        });
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleProjectCreated = (project: any) => {
+    setSnackbar({
+      open: true,
+      message: `Project "${project.name}" created successfully!`,
+      severity: 'success'
+    });
+    // TODO: Refresh projects list or navigate to project detail
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
   const quickActions = [
     {
       title: 'Create Project',
@@ -66,6 +118,7 @@ const Dashboard: React.FC = () => {
       icon: <Code sx={{ fontSize: 40 }} />,
       color: 'primary',
       gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+      action: 'create-project'
     },
     {
       title: 'Run Assessment',
@@ -73,6 +126,7 @@ const Dashboard: React.FC = () => {
       icon: <Assessment sx={{ fontSize: 40 }} />,
       color: 'secondary',
       gradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)',
+      action: 'run-assessment'
     },
     {
       title: 'View Issues',
@@ -80,6 +134,7 @@ const Dashboard: React.FC = () => {
       icon: <BugReport sx={{ fontSize: 40 }} />,
       color: 'warning',
       gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+      action: 'view-issues'
     },
     {
       title: 'Analytics',
@@ -87,6 +142,7 @@ const Dashboard: React.FC = () => {
       icon: <TrendingUp sx={{ fontSize: 40 }} />,
       color: 'success',
       gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      action: 'analytics'
     },
   ];
 
@@ -258,15 +314,18 @@ const Dashboard: React.FC = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {quickActions.map((action, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card sx={{ 
-              height: '100%',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-8px)',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-              }
-            }}>
+            <Card 
+              sx={{ 
+                height: '100%',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease-in-out',
+                '&:hover': {
+                  transform: 'translateY(-8px)',
+                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                }
+              }}
+              onClick={() => handleQuickAction(action.action)}
+            >
               <CardContent sx={{ 
                 textAlign: 'center',
                 p: 3,
@@ -336,6 +395,29 @@ const Dashboard: React.FC = () => {
           </Box>
         </CardContent>
       </Card>
+
+      {/* Project Form Dialog */}
+      <ProjectForm
+        open={projectFormOpen}
+        onClose={() => setProjectFormOpen(false)}
+        onSuccess={handleProjectCreated}
+      />
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
