@@ -171,7 +171,9 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
           if (!sourceUrl) {
             throw new Error('Web URL is required');
           }
-          analysisResult = await codeAnalyzer.analyzeWebUrl(sourceUrl, projectData.analysisConfig);
+          // Extract login credentials if provided
+          const loginCredentials = req.body.loginCredentials;
+          analysisResult = await codeAnalyzer.analyzeWebUrl(sourceUrl, projectData.analysisConfig, loginCredentials);
           break;
           
         case 'local':

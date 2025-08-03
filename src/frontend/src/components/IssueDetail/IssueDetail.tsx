@@ -52,7 +52,19 @@ import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
 interface IssueDetailProps {
   open: boolean;
   onClose: () => void;
-  issue: any;
+  issue: {
+    severity: 'critical' | 'high' | 'medium' | 'low';
+    type: 'security' | 'performance' | 'quality' | 'documentation';
+    title: string;
+    description: string;
+    filePath?: string;
+    lineNumber?: number;
+    codeSnippet?: string;
+    impact?: string;
+    recommendation?: string;
+    resolutionSteps?: ResolutionStep[];
+    [key: string]: any;
+  };
 }
 
 interface CodeLocation {
@@ -82,14 +94,14 @@ const IssueDetail: React.FC<IssueDetailProps> = ({ open, onClose, issue }) => {
     low: 'success'
   } as const;
 
-  const severityIcons = {
+  const severityIcons: Record<string, JSX.Element> = {
     critical: <Error color="error" />,
     high: <Warning color="warning" />,
     medium: <Info color="info" />,
     low: <CheckCircle color="success" />
   };
 
-  const typeIcons = {
+  const typeIcons: Record<string, JSX.Element> = {
     security: <Security />,
     performance: <Speed />,
     quality: <Code />,

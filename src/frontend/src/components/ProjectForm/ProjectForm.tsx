@@ -70,6 +70,16 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose }) => {
   const [webUrl, setWebUrl] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [useLogin, setUseLogin] = useState(false);
+  const [loginCredentials, setLoginCredentials] = useState({
+    username: '',
+    password: '',
+    loginUrl: '',
+    usernameSelector: '#username, input[name="username"], input[type="email"]',
+    passwordSelector: '#password, input[name="password"], input[type="password"]',
+    submitSelector: 'button[type="submit"], input[type="submit"]',
+    waitForSelector: '.dashboard, .home, .profile'
+  });
   const [analysisConfig, setAnalysisConfig] = useState<AnalysisConfig>({
     securityScan: true,
     performanceAnalysis: true,
@@ -103,6 +113,9 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose }) => {
       } else if (activeTab === 1 && webUrl) {
         projectData.sourceType = 'web';
         projectData.sourceUrl = webUrl;
+        if (useLogin && loginCredentials.username && loginCredentials.password) {
+          projectData.loginCredentials = loginCredentials;
+        }
       } else if (activeTab === 2 && (localPath || selectedFiles.length > 0)) {
         projectData.sourceType = 'local';
         if (localPath) {
@@ -129,6 +142,16 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose }) => {
         setWebUrl('');
         setLocalPath('');
         setSelectedFiles([]);
+        setUseLogin(false);
+        setLoginCredentials({
+          username: '',
+          password: '',
+          loginUrl: '',
+          usernameSelector: '#username, input[name="username"], input[type="email"]',
+          passwordSelector: '#password, input[name="password"], input[type="password"]',
+          submitSelector: 'button[type="submit"], input[type="submit"]',
+          waitForSelector: '.dashboard, .home, .profile'
+        });
         setActiveTab(0);
       }, 2000);
 
@@ -275,7 +298,98 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose }) => {
               value={webUrl}
               onChange={(e) => setWebUrl(e.target.value)}
               helperText="Will crawl and analyze the website's frontend code, APIs, and security"
+              sx={{ mb: 2 }}
             />
+            
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={useLogin}
+                  onChange={(e) => setUseLogin(e.target.checked)}
+                />
+              }
+              label="Requires Login"
+              sx={{ mb: 2 }}
+            />
+            
+            {useLogin && (
+              <Box sx={{ mt: 2, p: 2, border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                  Login Credentials
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Username"
+                      value={loginCredentials.username}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, username: e.target.value }))}
+                      placeholder="username@example.com"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="password"
+                      label="Password"
+                      value={loginCredentials.password}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="••••••••"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Login URL (Optional)"
+                      value={loginCredentials.loginUrl}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, loginUrl: e.target.value }))}
+                      placeholder="https://example.com/login"
+                      helperText="If different from the main URL"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Username Selector"
+                      value={loginCredentials.usernameSelector}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, usernameSelector: e.target.value }))}
+                      placeholder="#username"
+                      helperText="CSS selector for username field"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Password Selector"
+                      value={loginCredentials.passwordSelector}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, passwordSelector: e.target.value }))}
+                      placeholder="#password"
+                      helperText="CSS selector for password field"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Submit Button Selector"
+                      value={loginCredentials.submitSelector}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, submitSelector: e.target.value }))}
+                      placeholder="button[type='submit']"
+                      helperText="CSS selector for submit button"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Wait For Selector"
+                      value={loginCredentials.waitForSelector}
+                      onChange={(e) => setLoginCredentials(prev => ({ ...prev, waitForSelector: e.target.value }))}
+                      placeholder=".dashboard"
+                      helperText="CSS selector to wait for after login"
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
           </Box>
         )}
 

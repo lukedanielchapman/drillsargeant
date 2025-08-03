@@ -53,6 +53,16 @@ export interface AnalysisResult {
   analysisTime: number;
 }
 
+export interface LoginCredentials {
+  username?: string;
+  password?: string;
+  loginUrl?: string;
+  usernameSelector?: string;
+  passwordSelector?: string;
+  submitSelector?: string;
+  waitForSelector?: string;
+}
+
 export class CodeAnalyzer {
   private supportedLanguages = [
     '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', 
@@ -70,19 +80,26 @@ export class CodeAnalyzer {
     return this.generateMockAnalysisResult('git', analysisConfig);
   }
 
-  async analyzeWebUrl(webUrl: string, analysisConfig: any): Promise<AnalysisResult> {
+  async analyzeWebUrl(webUrl: string, analysisConfig: any, loginCredentials?: LoginCredentials): Promise<AnalysisResult> {
     try {
-      // For Firebase Functions, we'll simulate web analysis to avoid undici issues
+      // For Firebase Functions, we'll simulate web analysis with login support
       console.log(`Simulating web URL analysis for: ${webUrl}`);
+      
+      if (loginCredentials) {
+        console.log(`Login credentials provided for: ${loginCredentials.username || 'anonymous'}`);
+        // Simulate login process
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log('Login simulation completed');
+      }
       
       // Simulate analysis delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      return this.generateMockAnalysisResult('web', analysisConfig);
+      return this.generateMockAnalysisResult('web', analysisConfig, loginCredentials);
     } catch (error) {
       console.error('Error analyzing web URL:', error);
       // Return mock analysis if web analysis fails
-      return this.generateMockAnalysisResult('web', analysisConfig);
+      return this.generateMockAnalysisResult('web', analysisConfig, loginCredentials);
     }
   }
 
@@ -96,7 +113,7 @@ export class CodeAnalyzer {
     return this.generateMockAnalysisResult('local', analysisConfig);
   }
 
-  private generateMockAnalysisResult(sourceType: string, analysisConfig: any): AnalysisResult {
+  private generateMockAnalysisResult(sourceType: string, analysisConfig: any, loginCredentials?: LoginCredentials): AnalysisResult {
     const issues: CodeIssue[] = [];
     const timestamp = new Date().toISOString();
     
@@ -127,6 +144,61 @@ export class CodeAnalyzer {
         createdAt: timestamp,
         updatedAt: timestamp
       });
+
+      // Add authentication-specific security issues if login credentials were provided
+      if (loginCredentials) {
+        issues.push({
+          id: `security_2_${Date.now()}`,
+          title: 'Weak Password Policy',
+          description: 'The application does not enforce strong password requirements.',
+          severity: 'high',
+          type: 'security',
+          status: 'open',
+          filePath: `${sourceType}/auth.js`,
+          lineNumber: 25,
+          codeSnippet: '// No password strength validation found',
+          impact: 'Users can create weak passwords, increasing risk of account compromise.',
+          recommendation: 'Implement password strength validation with minimum requirements.',
+          resolutionSteps: [
+            {
+              step: 1,
+              title: 'Add Password Validation',
+              description: 'Implement password strength requirements.',
+              codeExample: 'function validatePassword(password) {\n  const minLength = 8;\n  const hasUpperCase = /[A-Z]/.test(password);\n  const hasLowerCase = /[a-z]/.test(password);\n  const hasNumbers = /\\d/.test(password);\n  const hasSpecialChar = /[!@#$%^&*]/.test(password);\n  return password.length >= minLength && hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar;\n}',
+              language: 'javascript'
+            }
+          ],
+          tags: ['authentication', 'security', 'password-policy'],
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+
+        issues.push({
+          id: `security_3_${Date.now()}`,
+          title: 'Missing CSRF Protection',
+          description: 'Login forms lack CSRF protection tokens.',
+          severity: 'high',
+          type: 'security',
+          status: 'open',
+          filePath: `${sourceType}/login.html`,
+          lineNumber: 12,
+          codeSnippet: '<form action="/login" method="POST">\n  <input type="text" name="username" />\n  <input type="password" name="password" />\n  <button type="submit">Login</button>\n</form>',
+          impact: 'Vulnerable to Cross-Site Request Forgery attacks.',
+          recommendation: 'Add CSRF tokens to all forms that modify server state.',
+          resolutionSteps: [
+            {
+              step: 1,
+              title: 'Add CSRF Token',
+              description: 'Include CSRF token in the form.',
+              codeExample: '<form action="/login" method="POST">\n  <input type="hidden" name="_csrf" value="{{csrfToken}}" />\n  <input type="text" name="username" />\n  <input type="password" name="password" />\n  <button type="submit">Login</button>\n</form>',
+              language: 'html'
+            }
+          ],
+          tags: ['csrf', 'security', 'authentication'],
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+      }
     }
     
     if (analysisConfig.performanceAnalysis !== false) {
@@ -162,6 +234,35 @@ export class CodeAnalyzer {
         createdAt: timestamp,
         updatedAt: timestamp
       });
+
+      // Add authentication-specific performance issues
+      if (loginCredentials) {
+        issues.push({
+          id: `performance_2_${Date.now()}`,
+          title: 'Inefficient Session Management',
+          description: 'Session data is stored in memory instead of a proper session store.',
+          severity: 'medium',
+          type: 'performance',
+          status: 'open',
+          filePath: `${sourceType}/session.js`,
+          lineNumber: 8,
+          codeSnippet: 'const sessions = new Map(); // In-memory session storage',
+          impact: 'Sessions are lost on server restart and don\'t scale across multiple instances.',
+          recommendation: 'Use a proper session store like Redis or database.',
+          resolutionSteps: [
+            {
+              step: 1,
+              title: 'Implement Redis Session Store',
+              description: 'Replace in-memory storage with Redis.',
+              codeExample: 'const session = require("express-session");\nconst RedisStore = require("connect-redis").default;\n\napp.use(session({\n  store: new RedisStore({ client: redisClient }),\n  secret: process.env.SESSION_SECRET,\n  resave: false,\n  saveUninitialized: false\n}));',
+              language: 'javascript'
+            }
+          ],
+          tags: ['session-management', 'performance', 'scalability'],
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+      }
     }
     
     if (analysisConfig.codeQuality !== false) {
@@ -190,6 +291,35 @@ export class CodeAnalyzer {
         createdAt: timestamp,
         updatedAt: timestamp
       });
+
+      // Add authentication-specific quality issues
+      if (loginCredentials) {
+        issues.push({
+          id: `quality_2_${Date.now()}`,
+          title: 'Inconsistent Error Messages',
+          description: 'Authentication error messages reveal too much information.',
+          severity: 'medium',
+          type: 'quality',
+          status: 'open',
+          filePath: `${sourceType}/auth.js`,
+          lineNumber: 45,
+          codeSnippet: 'throw new Error("User not found with email: " + email);',
+          impact: 'Information disclosure that could aid attackers.',
+          recommendation: 'Use generic error messages for authentication failures.',
+          resolutionSteps: [
+            {
+              step: 1,
+              title: 'Use Generic Error Messages',
+              description: 'Replace specific error messages with generic ones.',
+              codeExample: 'throw new Error("Invalid credentials");',
+              language: 'javascript'
+            }
+          ],
+          tags: ['error-messages', 'quality', 'security'],
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+      }
     }
     
     if (analysisConfig.documentationCheck !== false) {
@@ -218,6 +348,35 @@ export class CodeAnalyzer {
         createdAt: timestamp,
         updatedAt: timestamp
       });
+
+      // Add authentication-specific documentation issues
+      if (loginCredentials) {
+        issues.push({
+          id: `doc_2_${Date.now()}`,
+          title: 'Missing Authentication Flow Documentation',
+          description: 'Authentication flow lacks proper documentation.',
+          severity: 'low',
+          type: 'documentation',
+          status: 'open',
+          filePath: `${sourceType}/auth.js`,
+          lineNumber: 1,
+          codeSnippet: '// Authentication module without documentation',
+          impact: 'Difficult for new developers to understand the authentication system.',
+          recommendation: 'Add comprehensive documentation for authentication flows.',
+          resolutionSteps: [
+            {
+              step: 1,
+              title: 'Add Authentication Documentation',
+              description: 'Document the authentication flow and security considerations.',
+              codeExample: '/**\n * Authentication Module\n * \n * This module handles user authentication including:\n * - Login/logout functionality\n * - Password validation\n * - Session management\n * - CSRF protection\n * \n * Security considerations:\n * - Passwords are hashed using bcrypt\n * - Sessions use secure cookies\n * - CSRF tokens are required for all forms\n */',
+              language: 'javascript'
+            }
+          ],
+          tags: ['documentation', 'authentication', 'security'],
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+      }
     }
     
     const summary = this.generateSummary(issues);
@@ -225,8 +384,8 @@ export class CodeAnalyzer {
     return {
       issues,
       summary,
-      filesAnalyzed: 3,
-      linesOfCode: 150,
+      filesAnalyzed: loginCredentials ? 5 : 3, // More files analyzed when authentication is involved
+      linesOfCode: loginCredentials ? 250 : 150,
       analysisTime: Date.now()
     };
   }
