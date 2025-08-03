@@ -145,6 +145,14 @@ dmypy.json
 !firestore.rules
 !firestore.indexes.json
 !storage.rules
+!firebase.json
+!firestore.indexes.json
+!firestore.rules
+
+# Firebase service account keys (security)
+*-firebase-adminsdk-*.json
+firebase-adminsdk-*.json
+serviceAccountKey.json
 
 # Large files
 *.pack
