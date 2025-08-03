@@ -71,6 +71,7 @@ import {
   Area
 } from 'recharts';
 import apiService from '../../services/api';
+import ErrorCode, { ErrorDetails } from '../ErrorCode/ErrorCode';
 
 interface AnalyticsDashboardProps {
   open: boolean;
@@ -194,10 +195,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
   const [exportLoading, setExportLoading] = useState(false);
   const [exportStatus, setExportStatus] = useState<any>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
-    open: false,
-    message: '',
-    severity: 'success'
+    open: false, message: '', severity: 'success'
   });
+  const [errorDetails, setErrorDetails] = useState<ErrorDetails | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -209,11 +209,30 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
     try {
       setLoading(true);
       setError('');
+      setErrorDetails(null);
       const data = await apiService.getAnalytics();
       setAnalyticsData(data);
     } catch (error: any) {
       console.error('Error loading analytics:', error);
       setError(error.message || 'Failed to load analytics data');
+      
+      // Create error details for ErrorCode component
+      const errorDetails: ErrorDetails = {
+        code: 'ANALYTICS_LOAD_ERROR',
+        title: 'Failed to Load Analytics',
+        description: 'Unable to fetch analytics data from the server. This may be due to a network issue or server problem.',
+        severity: 'error',
+        category: 'api',
+        resolution: [
+          'Check your internet connection',
+          'Verify the server is running',
+          'Try refreshing the page',
+          'Contact support if the problem persists'
+        ],
+        technicalDetails: error.message || 'Unknown error occurred',
+        timestamp: new Date().toISOString()
+      };
+      setErrorDetails(errorDetails);
     } finally {
       setLoading(false);
     }
@@ -760,6 +779,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ open, onClose }
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {errorDetails && (
+        <ErrorCode
+          open={!!errorDetails}
+          onClose={() => setErrorDetails(null)}
+          error={errorDetails}
+          onRetry={loadAnalytics}
+        />
+      )}
     </>
   );
 };
