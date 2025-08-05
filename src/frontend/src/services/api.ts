@@ -1,6 +1,6 @@
 import { auth } from '../config/firebase';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://us-central1-drillsargeant-19d36.cloudfunctions.net/api';
+const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'https://us-central1-drillsargeant-19d36.cloudfunctions.net/api';
 
 class ApiService {
   private async getAuthToken(): Promise<string | null> {
@@ -24,7 +24,28 @@ class ApiService {
     });
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    return response;
+  }
+
+  private async makeFileRequest(endpoint: string, formData: FormData): Promise<Response> {
+    const token = await this.getAuthToken();
+    
+    const headers = {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      // Don't set Content-Type for FormData - browser will set it with boundary
+    };
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
     }
 
     return response;
@@ -194,6 +215,29 @@ class ApiService {
   async deleteTeam(teamId: string): Promise<any> {
     const response = await this.makeRequest(`/api/teams/${teamId}`, {
       method: 'DELETE'
+    });
+    return response.json();
+  }
+
+  // File Upload and Analysis
+  async uploadFiles(projectId: string, formData: FormData): Promise<any> {
+    const response = await this.makeFileRequest(`/api/projects/${projectId}/upload-files`, formData);
+    return response.json();
+  }
+
+  async getAnalysisProgress(progressId: string): Promise<any> {
+    const response = await this.makeRequest(`/api/analysis-progress/${progressId}`);
+    return response.json();
+  }
+
+  // Directory Analysis
+  async analyzeDirectoryFiles(projectId: string, files: Array<{path: string, content: string, type: string}>): Promise<any> {
+    const response = await this.makeRequest(`/api/projects/${projectId}/analyze-directory`, {
+      method: 'POST',
+      body: JSON.stringify({ files }),
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     return response.json();
   }

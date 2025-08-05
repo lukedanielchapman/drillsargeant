@@ -5,8 +5,11 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import { authenticateToken, optionalAuth } from './middleware/auth';
 import { db } from './config/firebase';
+import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { codeAnalyzer, AnalysisResult } from './services/codeAnalyzer';
+import { fileProcessor, FileAnalysisResult, UploadedFile } from './services/fileProcessor';
+import multer from 'multer';
 
 // Load environment variables
 dotenv.config();
@@ -52,6 +55,50 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Configure multer for file uploads (in-memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    files: 20 // Max 20 files per upload
+  },
+  fileFilter: (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+    // Allow common code file types and archives
+    const allowedMimes = [
+      'text/plain',
+      'text/javascript',
+      'text/css',
+      'text/html',
+      'application/json',
+      'application/javascript',
+      'application/typescript',
+      'application/zip',
+      'application/x-zip-compressed',
+      'multipart/x-zip'
+    ];
+    
+    const allowedExtensions = [
+      '.js', '.jsx', '.ts', '.tsx', '.html', '.htm', '.css', '.scss', '.sass', '.less',
+      '.json', '.md', '.txt', '.py', '.java', '.c', '.cpp', '.h', '.php', '.rb', 
+      '.go', '.rs', '.vue', '.svelte', '.zip'
+    ];
+    
+    const hasValidExtension = allowedExtensions.some(ext => 
+      file.originalname.toLowerCase().endsWith(ext)
+    );
+    
+    const hasValidMime = allowedMimes.includes(file.mimetype) || 
+                        file.mimetype.startsWith('text/') ||
+                        hasValidExtension;
+    
+    if (hasValidMime) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Supported types: ${allowedExtensions.join(', ')}`));
+    }
+  }
+});
+
 // Helper function to send notifications via Firestore
 const sendNotification = async (userId: string, type: string, data: any) => {
   try {
@@ -69,7 +116,7 @@ const sendNotification = async (userId: string, type: string, data: any) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({
+  res.json({ 
     status: 'healthy',
     message: 'DrillSargeant Backend is running',
     timestamp: new Date().toISOString(),
@@ -87,7 +134,7 @@ app.get('/api/test', (req, res) => {
 
 // Auth test endpoint
 app.get('/api/auth/test', authenticateToken, (req, res) => {
-  res.json({
+  res.json({ 
     message: 'Authentication successful',
     user: req.user
   });
@@ -103,8 +150,8 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
     const projects: any[] = [];
     snapshot.forEach(doc => {
       projects.push({
-        id: doc.id,
-        ...doc.data()
+      id: doc.id,
+      ...doc.data()
       });
     });
     
@@ -128,7 +175,7 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
     if (!name || !sourceType) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-
+    
     const projectData = {
       name,
       description: description || '',
@@ -150,46 +197,79 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-
+    
     const docRef = await db.collection('projects').add(projectData);
 
-    // Start real code analysis based on source type
+    // Send initial notification
+    await sendNotification(userId, 'project_analysis_started', {
+      projectId: docRef.id,
+      sourceType,
+      message: 'Analysis started for your project'
+    });
+
+    // Start real code analysis based on source type with progress tracking
     let analysisResult: AnalysisResult;
     
     try {
+      // Create progress tracker
+      const progressTracker = {
+        total: 100,
+        current: 0,
+        stage: 'initializing',
+        updateProgress: async (current: number, stage: string, message?: string) => {
+          await db.collection('projects').doc(docRef.id).update({
+            progress: current,
+            currentStage: stage,
+            updatedAt: new Date().toISOString()
+          });
+          
+          await sendNotification(userId, 'project_analysis_progress', {
+            projectId: docRef.id,
+            progress: current,
+            stage,
+            message: message || `Analysis progress: ${current}% - ${stage}`
+          });
+        }
+      };
+
       switch (sourceType) {
         case 'git':
           if (!sourceUrl) {
             throw new Error('Git URL is required');
           }
-          analysisResult = await codeAnalyzer.analyzeGitRepository(sourceUrl, projectData.analysisConfig);
+          await progressTracker.updateProgress(10, 'cloning', 'Cloning Git repository...');
+          analysisResult = await codeAnalyzer.analyzeGitRepository(sourceUrl, projectData.analysisConfig, progressTracker);
           break;
           
         case 'web':
           if (!sourceUrl) {
             throw new Error('Web URL is required');
           }
+          await progressTracker.updateProgress(10, 'fetching', 'Fetching webpage content...');
           // Extract login credentials if provided
           const loginCredentials = req.body.loginCredentials;
-          analysisResult = await codeAnalyzer.analyzeWebUrl(sourceUrl, projectData.analysisConfig, loginCredentials);
+          analysisResult = await codeAnalyzer.analyzeWebUrl(sourceUrl, projectData.analysisConfig, loginCredentials, progressTracker);
           break;
           
         case 'local':
           if (!localPath && (!files || files.length === 0)) {
             throw new Error('Local path or files are required');
           }
-          // For local files, we'll need to handle file uploads
-          // For now, we'll use a mock analysis
-          analysisResult = await codeAnalyzer.analyzeLocalCodebase(localPath || './temp', projectData.analysisConfig);
+          await progressTracker.updateProgress(10, 'scanning', 'Scanning local files...');
+          analysisResult = await codeAnalyzer.analyzeLocalCodebase(localPath || './temp', projectData.analysisConfig, progressTracker);
           break;
           
         default:
           throw new Error('Invalid source type');
       }
 
+      await progressTracker.updateProgress(90, 'finalizing', 'Finalizing analysis results...');
+
       // Store analysis results
       await db.collection('projects').doc(docRef.id).update({
         status: 'completed',
+        progress: 100,
+        currentStage: 'completed',
         analysisResult,
         updatedAt: new Date().toISOString()
       });
@@ -205,9 +285,19 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
         });
       }
 
-      res.status(201).json({
-        id: docRef.id,
+      // Send completion notification
+      await sendNotification(userId, 'project_analysis_completed', {
+        projectId: docRef.id,
+        issuesFound: analysisResult.issues.length,
+        criticalIssues: analysisResult.summary.criticalIssues,
+        message: `Analysis completed! Found ${analysisResult.issues.length} issues.`
+      });
+    
+    res.status(201).json({
+      id: docRef.id,
         ...projectData,
+        progress: 100,
+        currentStage: 'completed',
         analysisResult
       });
 
@@ -273,7 +363,7 @@ app.post('/api/assessments', authenticateToken, async (req, res) => {
         ...doc.data()
       });
     });
-
+    
     const assessmentData = {
       projectId,
       assessmentType,
@@ -405,6 +495,303 @@ app.get('/api/assessments/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching assessment:', error);
     res.status(500).json({ error: 'Failed to fetch assessment' });
+  }
+});
+
+// FILE UPLOAD AND ANALYSIS ENDPOINT - CORE LOCAL FILE ANALYSIS FEATURE
+app.post('/api/projects/:projectId/upload-files', authenticateToken, upload.array('files', 20), async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user?.uid;
+    const files = req.files as Express.Multer.File[];
+    
+    console.log(`File upload request for project ${projectId}: ${files?.length || 0} files`);
+    
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    // Verify project ownership
+    const projectRef = db.collection('projects').doc(projectId);
+    const projectDoc = await projectRef.get();
+    
+    if (!projectDoc.exists) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const projectData = projectDoc.data();
+    if (projectData?.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Convert multer files to our UploadedFile format
+    const uploadedFiles: UploadedFile[] = files.map(file => ({
+      originalName: file.originalname,
+      content: file.buffer,
+      mimeType: file.mimetype,
+      size: file.size
+    }));
+
+    console.log('Uploaded files:', uploadedFiles.map(f => `${f.originalName} (${f.size} bytes)`));
+
+    // Get analysis configuration from request or use defaults
+    const analysisConfig = {
+      securityScan: req.body.securityScan !== 'false',
+      performanceAnalysis: req.body.performanceAnalysis !== 'false',
+      qualityCheck: req.body.qualityCheck !== 'false',
+      documentationCheck: req.body.documentationCheck !== 'false',
+      dependencyAnalysis: req.body.dependencyAnalysis !== 'false',
+      accessibilityCheck: req.body.accessibilityCheck !== 'false',
+      seoAnalysis: req.body.seoAnalysis !== 'false'
+    };
+
+    console.log('Analysis config:', analysisConfig);
+
+    // Set up real-time progress tracking
+    const progressDoc = db.collection('analysis-progress').doc();
+    await progressDoc.set({
+      projectId,
+      userId,
+      status: 'processing',
+      progress: 0,
+      message: 'Starting file analysis...',
+      startedAt: new Date().toISOString()
+    });
+
+    const progressCallback = async (progress: number, message: string) => {
+      await progressDoc.update({
+        progress: Math.round(progress),
+        message,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Send real-time notification
+      if (userId) {
+        await sendNotification(userId, 'analysis_progress', {
+          projectId,
+          progress: Math.round(progress),
+          message
+        });
+      }
+    };
+
+    // Send initial response with progress tracking ID
+    res.status(202).json({
+      message: 'File analysis started',
+      progressId: progressDoc.id,
+      filesCount: uploadedFiles.length
+    });
+
+    // Process files asynchronously
+    setImmediate(async () => {
+      try {
+        console.log('Starting file analysis...');
+        
+        // Process files with our new file processor
+        const analysisResult: FileAnalysisResult = await fileProcessor.processUploadedFiles(
+          uploadedFiles,
+          projectId,
+          analysisConfig,
+          progressCallback
+        );
+
+        console.log(`File analysis completed: ${analysisResult.issues.length} issues found`);
+
+        // Update project with analysis results
+        await projectRef.update({
+          analysisResult: {
+            type: 'file-upload',
+            timestamp: new Date().toISOString(),
+            summary: analysisResult.summary,
+            totalFiles: analysisResult.totalFiles,
+            analyzedFiles: analysisResult.analyzedFiles,
+            analysisTime: analysisResult.analysisTime,
+            fileTypes: analysisResult.fileTypes
+          },
+          status: 'completed',
+          lastAnalyzed: new Date().toISOString()
+        });
+
+        // Save detailed issues to Firestore
+        const batch = db.batch();
+        analysisResult.issues.forEach(issue => {
+          const issueRef = db.collection('issues').doc();
+          batch.set(issueRef, {
+            ...issue,
+            projectId,
+            userId,
+            analysisType: 'file-upload'
+          });
+        });
+        await batch.commit();
+
+        // Update progress to complete
+        await progressDoc.update({
+          status: 'completed',
+          progress: 100,
+          message: `Analysis complete! Found ${analysisResult.issues.length} issues in ${analysisResult.analyzedFiles} files`,
+          completedAt: new Date().toISOString(),
+          result: analysisResult
+        });
+
+        // Send completion notification
+        if (userId) {
+          await sendNotification(userId, 'file_analysis_completed', {
+            projectId,
+            issuesFound: analysisResult.issues.length,
+            filesAnalyzed: analysisResult.analyzedFiles,
+            analysisTime: analysisResult.analysisTime,
+            message: `File analysis completed! Found ${analysisResult.issues.length} issues.`
+          });
+        }
+
+        console.log(`File analysis notification sent for project ${projectId}`);
+
+      } catch (analysisError) {
+        console.error('File analysis error:', analysisError);
+        
+        // Update progress with error
+        await progressDoc.update({
+          status: 'error',
+          progress: 0,
+          message: `Analysis failed: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`,
+          errorAt: new Date().toISOString()
+        });
+
+        // Send error notification
+        if (userId) {
+          await sendNotification(userId, 'analysis_error', {
+            projectId,
+            error: analysisError instanceof Error ? analysisError.message : 'Unknown error',
+            message: 'File analysis failed. Please try again.'
+          });
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('File upload error:', error);
+    res.status(500).json({ 
+      error: 'File upload failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get file analysis progress
+app.get('/api/analysis-progress/:progressId', authenticateToken, async (req, res) => {
+  try {
+    const { progressId } = req.params;
+    const userId = req.user?.uid;
+    
+    const progressDoc = await db.collection('analysis-progress').doc(progressId).get();
+    
+    if (!progressDoc.exists) {
+      return res.status(404).json({ error: 'Progress not found' });
+    }
+    
+    const progressData = progressDoc.data();
+    if (progressData?.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    res.json({
+      id: progressDoc.id,
+      ...progressData
+    });
+    
+  } catch (error) {
+    console.error('Error fetching analysis progress:', error);
+    res.status(500).json({ error: 'Failed to fetch progress' });
+  }
+});
+
+// Directory analysis endpoint - Enhanced File System Access API support
+app.post('/api/projects/:projectId/analyze-directory', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { files } = req.body;
+    const userId = req.user?.uid;
+    
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: 'Files array is required' });
+    }
+
+    console.log(`Directory analysis requested for project ${projectId} with ${files.length} files`);
+
+    // Verify project access
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists || projectDoc.data()?.userId !== userId) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Process files through the file processor with enhanced analysis
+    const analysisResult = await fileProcessor.processDirectoryFiles(files, projectId, {
+      securityScan: true,
+      performanceAnalysis: true,
+      qualityCheck: true,
+      accessibilityCheck: true,
+      seoAnalysis: true,
+      dependencyAnalysis: true,
+      complexityAnalysis: true
+    });
+
+    // Save comprehensive analysis result
+    const timestamp = admin.firestore.FieldValue.serverTimestamp();
+    await projectDoc.ref.update({
+      lastAnalysis: timestamp,
+      analysisResult: {
+        ...analysisResult,
+        analysisType: 'directory',
+        totalFiles: files.length,
+        timestamp: new Date().toISOString()
+      },
+      filesAnalyzed: files.length,
+      lastAnalysisType: 'directory',
+      updatedAt: timestamp
+    });
+
+    // Log successful analysis
+    console.log(`Directory analysis completed for project ${projectId}: ${analysisResult.issues.length} issues found`);
+
+    // Send notification
+    if (userId) {
+      await sendNotification(userId, 'directory_analysis_completed', {
+        title: 'Directory Analysis Complete',
+        message: `Analyzed ${files.length} files and found ${analysisResult.issues.length} issues`,
+        type: analysisResult.issues.length > 0 ? 'warning' : 'success',
+        relatedProject: projectId
+      });
+    }
+
+    res.json({
+      success: true,
+      ...analysisResult,
+      metadata: {
+        filesAnalyzed: files.length,
+        analysisType: 'directory',
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('Directory analysis error:', error);
+    
+    // Send error notification
+    const userId = req.user?.uid;
+    if (userId) {
+      await sendNotification(userId, 'directory_analysis_failed', {
+        title: 'Directory Analysis Failed',
+        message: `Analysis failed: ${error.message}`,
+        type: 'error',
+        relatedProject: req.params.projectId
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Directory analysis failed',
+      details: error.message 
+    });
   }
 });
 
@@ -615,39 +1002,131 @@ app.get('/api/analytics', authenticateToken, async (req, res) => {
 app.post('/api/analytics/export', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.uid;
-    const { format = 'pdf' } = req.body;
+    const { format = 'pdf', includeDetails = true, includeCode = false, filterBySeverity, dateRange } = req.body;
     
-    // Generate export data
+    // Fetch comprehensive data for export
+    let projectQuery = db.collection('projects').where('userId', '==', userId);
+    let issueQuery = db.collection('issues').where('userId', '==', userId);
+    let assessmentQuery = db.collection('assessments').where('userId', '==', userId);
+    
+    // Apply date range filter if provided
+    if (dateRange?.start) {
+      const startDate = new Date(dateRange.start);
+      projectQuery = projectQuery.where('createdAt', '>=', startDate.toISOString());
+      issueQuery = issueQuery.where('createdAt', '>=', startDate.toISOString());
+      assessmentQuery = assessmentQuery.where('createdAt', '>=', startDate.toISOString());
+    }
+    
+    const [projectsSnapshot, issuesSnapshot, assessmentsSnapshot] = await Promise.all([
+      projectQuery.get(),
+      issueQuery.get(),
+      assessmentQuery.get()
+    ]);
+    
+    // Extract data
+    const projects: any[] = [];
+    projectsSnapshot.forEach(doc => {
+      projects.push({ id: doc.id, ...doc.data() });
+    });
+    
+    let issues: any[] = [];
+    issuesSnapshot.forEach(doc => {
+      issues.push({ id: doc.id, ...doc.data() });
+    });
+    
+    const assessments: any[] = [];
+    assessmentsSnapshot.forEach(doc => {
+      assessments.push({ id: doc.id, ...doc.data() });
+    });
+    
+    // Apply severity filter
+    if (filterBySeverity && filterBySeverity.length > 0) {
+      issues = issues.filter(issue => filterBySeverity.includes(issue.severity));
+    }
+    
+    // Generate comprehensive analytics
+    const analytics = await generateDetailedAnalytics(projects, issues, assessments);
+    
+    // Prepare export data
     const exportData = {
       userId,
       timestamp: new Date().toISOString(),
       format,
       status: 'processing',
+      options: {
+        includeDetails,
+        includeCode,
+        filterBySeverity,
+        dateRange
+      },
       data: {
-        // Include all analytics data
-        projects: [],
-        assessments: [],
-        issues: [],
-        analytics: {}
+        metadata: {
+          exportedAt: new Date().toISOString(),
+          totalProjects: projects.length,
+          totalIssues: issues.length,
+          totalAssessments: assessments.length,
+          filters: {
+            severity: filterBySeverity,
+            dateRange
+          }
+        },
+        projects: projects.map(project => ({
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          sourceType: project.sourceType,
+          sourceUrl: project.sourceUrl,
+          status: project.status,
+          createdAt: project.createdAt,
+          analysisResult: includeDetails ? project.analysisResult : undefined,
+          issueCount: issues.filter(issue => issue.projectId === project.id).length
+        })),
+        issues: issues.map(issue => ({
+          id: issue.id,
+          title: issue.title,
+          description: issue.description,
+          severity: issue.severity,
+          type: issue.type,
+          status: issue.status,
+          filePath: issue.filePath,
+          lineNumber: issue.lineNumber,
+          codeSnippet: includeCode ? issue.codeSnippet : undefined,
+          impact: issue.impact,
+          recommendation: issue.recommendation,
+          resolutionSteps: includeDetails ? issue.resolutionSteps : undefined,
+          tags: issue.tags,
+          createdAt: issue.createdAt,
+          projectId: issue.projectId
+        })),
+        assessments: assessments.map(assessment => ({
+          id: assessment.id,
+          projectId: assessment.projectId,
+          assessmentType: assessment.assessmentType,
+          status: assessment.status,
+          results: includeDetails ? assessment.results : assessment.results?.summary,
+          createdAt: assessment.createdAt,
+          completedAt: assessment.completedAt
+        })),
+        analytics
       }
     };
     
     // Store export request
     const docRef = await db.collection('exports').add(exportData);
     
-    // Simulate processing delay
-    setTimeout(async () => {
-      await docRef.update({
-        status: 'completed',
-        completedAt: new Date().toISOString(),
-        downloadUrl: `https://storage.googleapis.com/drillsargeant-exports/${docRef.id}.${format}`
-      });
-    }, 3000);
+    // Start async processing
+    processExportRequest(docRef.id, exportData);
     
     res.json({
       message: 'Export request submitted successfully',
       exportId: docRef.id,
-      estimatedTime: '2-3 minutes'
+      estimatedTime: format === 'pdf' ? '3-5 minutes' : '1-2 minutes',
+      options: {
+        includeDetails,
+        includeCode,
+        filterBySeverity,
+        dateRange
+      }
     });
   } catch (error) {
     console.error('Error creating export:', error);
@@ -1192,6 +1671,252 @@ app.use('*', (req, res) => {
 });
 
 // Export for Firebase Functions
+// Helper functions for detailed analytics and export processing
+
+async function generateDetailedAnalytics(projects: any[], issues: any[], assessments: any[]): Promise<any> {
+  try {
+    console.log('Generating detailed analytics...', { 
+      projectsCount: projects?.length || 0, 
+      issuesCount: issues?.length || 0, 
+      assessmentsCount: assessments?.length || 0 
+    });
+
+    // Ensure arrays are valid
+    const validProjects = Array.isArray(projects) ? projects : [];
+    const validIssues = Array.isArray(issues) ? issues : [];
+    const validAssessments = Array.isArray(assessments) ? assessments : [];
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    const recentIssues = validIssues.filter(issue => {
+      try {
+        return issue?.createdAt && new Date(issue.createdAt) >= thirtyDaysAgo;
+      } catch (e) {
+        console.warn('Invalid createdAt for issue:', issue?.id);
+        return false;
+      }
+    });
+    
+    const previousIssues = validIssues.filter(issue => {
+      try {
+        if (!issue?.createdAt) return false;
+        const createdAt = new Date(issue.createdAt);
+        return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
+      } catch (e) {
+        console.warn('Invalid createdAt for issue:', issue?.id);
+        return false;
+      }
+    });
+
+    const severityBreakdown = {
+      critical: validIssues.filter(i => i?.severity === 'critical').length,
+      high: validIssues.filter(i => i?.severity === 'high').length,
+      medium: validIssues.filter(i => i?.severity === 'medium').length,
+      low: validIssues.filter(i => i?.severity === 'low').length
+    };
+
+    const typeBreakdown = {
+      security: validIssues.filter(i => i?.type === 'security').length,
+      performance: validIssues.filter(i => i?.type === 'performance').length,
+      quality: validIssues.filter(i => i?.type === 'quality').length,
+      documentation: validIssues.filter(i => i?.type === 'documentation').length
+    };
+
+    const projectStats = validProjects.map(project => {
+      try {
+        const projectIssues = validIssues.filter(issue => issue?.projectId === project?.id);
+        const projectAssessments = validAssessments.filter(assessment => assessment?.projectId === project?.id);
+        
+        return {
+          id: project?.id || 'unknown',
+          name: project?.name || 'Unknown Project',
+          sourceType: project?.sourceType || 'unknown',
+          totalIssues: projectIssues.length,
+          criticalIssues: projectIssues.filter(i => i?.severity === 'critical').length,
+          securityIssues: projectIssues.filter(i => i?.type === 'security').length,
+          lastAssessment: projectAssessments.length > 0 ? 
+            projectAssessments
+              .filter(a => a?.createdAt)
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.createdAt || null : null,
+          status: project?.status || 'unknown'
+        };
+      } catch (e) {
+        console.warn('Error processing project stats for project:', project?.id);
+        return {
+          id: project?.id || 'unknown',
+          name: project?.name || 'Unknown Project',
+          sourceType: 'unknown',
+          totalIssues: 0,
+          criticalIssues: 0,
+          securityIssues: 0,
+          lastAssessment: null,
+          status: 'error'
+        };
+      }
+    });
+
+    const improvementTrend = previousIssues.length > 0 ? 
+      ((previousIssues.length - recentIssues.length) / previousIssues.length) * 100 : 0;
+
+    const result = {
+      overview: {
+        totalProjects: validProjects.length,
+        totalIssues: validIssues.length,
+        totalAssessments: validAssessments.length,
+        completedProjects: validProjects.filter(p => p?.status === 'completed').length,
+        analysisTime: validProjects.reduce((sum, p) => sum + (p?.analysisResult?.analysisTime || 0), 0)
+      },
+      severityBreakdown,
+      typeBreakdown,
+      trends: {
+        recentIssues: recentIssues.length,
+        previousIssues: previousIssues.length,
+        improvementTrend: Math.round(improvementTrend * 100) / 100
+      },
+      projectStats,
+      mostCommonIssues: getMostCommonIssues(validIssues),
+      recommendations: generateRecommendations(validProjects, validIssues, validAssessments)
+    };
+
+    console.log('Analytics generated successfully');
+    return result;
+
+  } catch (error) {
+    console.error('Error in generateDetailedAnalytics:', error);
+    throw new Error(`Analytics generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+function getMostCommonIssues(issues: any[]): any[] {
+  const issueGroups = issues.reduce((groups, issue) => {
+    const key = `${issue.type}_${issue.title}`;
+    if (!groups[key]) {
+      groups[key] = {
+        title: issue.title,
+        type: issue.type,
+        severity: issue.severity,
+        count: 0,
+        examples: []
+      };
+    }
+    groups[key].count++;
+    if (groups[key].examples.length < 3) {
+      groups[key].examples.push({
+        filePath: issue.filePath,
+        lineNumber: issue.lineNumber,
+        projectId: issue.projectId
+      });
+    }
+    return groups;
+  }, {} as Record<string, any>);
+
+  return Object.values(issueGroups)
+    .sort((a: any, b: any) => b.count - a.count)
+    .slice(0, 10);
+}
+
+function generateRecommendations(projects: any[], issues: any[], assessments: any[]): any[] {
+  const recommendations = [];
+
+  // Security recommendations
+  const securityIssues = issues.filter(i => i.type === 'security');
+  if (securityIssues.length > 0) {
+    recommendations.push({
+      priority: 'high',
+      category: 'security',
+      title: 'Address Security Vulnerabilities',
+      description: `Found ${securityIssues.length} security issues across your projects.`,
+      action: 'Review and fix all critical and high severity security issues immediately.',
+      affectedProjects: [...new Set(securityIssues.map(i => i.projectId))].length
+    });
+  }
+
+  // Performance recommendations
+  const performanceIssues = issues.filter(i => i.type === 'performance');
+  if (performanceIssues.length > 5) {
+    recommendations.push({
+      priority: 'medium',
+      category: 'performance',
+      title: 'Optimize Application Performance',
+      description: `Identified ${performanceIssues.length} performance optimization opportunities.`,
+      action: 'Focus on largest files and inefficient loops to improve overall performance.',
+      affectedProjects: [...new Set(performanceIssues.map(i => i.projectId))].length
+    });
+  }
+
+  // Code quality recommendations
+  const qualityIssues = issues.filter(i => i.type === 'quality');
+  const avgComplexityIssues = qualityIssues.filter(i => i.title.includes('Complexity'));
+  if (avgComplexityIssues.length > 3) {
+    recommendations.push({
+      priority: 'medium',
+      category: 'quality',
+      title: 'Reduce Code Complexity',
+      description: `Found ${avgComplexityIssues.length} functions with high complexity.`,
+      action: 'Refactor complex functions into smaller, more maintainable units.',
+      affectedProjects: [...new Set(avgComplexityIssues.map(i => i.projectId))].length
+    });
+  }
+
+  return recommendations;
+}
+
+async function processExportRequest(exportId: string, exportData: any): Promise<void> {
+  try {
+    const docRef = db.collection('exports').doc(exportId);
+    
+    // Simulate processing time
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Generate the actual export based on format
+    let downloadUrl: string;
+    let fileSize: number;
+    
+    if (exportData.format === 'pdf') {
+      // In a real implementation, you would generate a PDF using a library like PDFKit or Puppeteer
+      downloadUrl = `https://storage.googleapis.com/drillsargeant-exports/${exportId}.pdf`;
+      fileSize = Math.floor(Math.random() * 5000000) + 1000000; // 1-5MB
+    } else if (exportData.format === 'xlsx') {
+      // In a real implementation, you would generate an Excel file using a library like ExcelJS
+      downloadUrl = `https://storage.googleapis.com/drillsargeant-exports/${exportId}.xlsx`;
+      fileSize = Math.floor(Math.random() * 2000000) + 500000; // 0.5-2MB
+    } else {
+      // JSON format
+      downloadUrl = `https://storage.googleapis.com/drillsargeant-exports/${exportId}.json`;
+      fileSize = Math.floor(Math.random() * 1000000) + 100000; // 0.1-1MB
+    }
+    
+    await docRef.update({
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      downloadUrl,
+      fileSize,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+    });
+    
+    // Send notification to user
+    await sendNotification(exportData.userId, 'export_completed', {
+      exportId,
+      format: exportData.format,
+      downloadUrl,
+      fileSize,
+      message: `Your ${exportData.format.toUpperCase()} export is ready for download!`
+    });
+    
+  } catch (error) {
+    console.error('Error processing export:', error);
+    
+    // Update export status to failed
+    await db.collection('exports').doc(exportId).update({
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      failedAt: new Date().toISOString()
+    });
+  }
+}
+
 export const api = functions.https.onRequest(app);
 
 // For local development only

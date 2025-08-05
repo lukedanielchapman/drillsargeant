@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -7,17 +7,41 @@ import {
   Button,
   Grid,
   Chip,
-  Divider
+  Divider,
+  Tab,
+  Tabs,
+  Alert
 } from '@mui/material';
 import { 
   ArrowBack,
   Assessment,
   BugReport,
   TrendingUp,
-  Settings
+  Settings,
+  CloudUpload,
+  ListAlt,
+  Analytics
 } from '@mui/icons-material';
+import FileUpload from '../../components/FileUpload/FileUpload';
+import DirectoryScanner from '../../components/DirectoryScanner/DirectoryScanner';
 
 const ProjectDetail: React.FC = () => {
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Mock project ID - in real app this would come from router params
+  const projectId = 'mock-project-id';
+
+  const handleAnalysisComplete = (result: any) => {
+    setSuccessMessage(`Analysis completed! Found ${result.issues?.length || 0} issues.`);
+    setErrorMessage(null);
+  };
+
+  const handleError = (error: string) => {
+    setErrorMessage(error);
+    setSuccessMessage(null);
+  };
+
   return (
     <Box sx={{ p: 4 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
@@ -33,7 +57,47 @@ const ProjectDetail: React.FC = () => {
         </Typography>
       </Box>
 
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
+        </Alert>
+      )}
+      
+      {errorMessage && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setErrorMessage(null)}>
+          {errorMessage}
+        </Alert>
+      )}
+
       <Grid container spacing={3}>
+        {/* File Upload Section */}
+        <Grid item xs={12}>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CloudUpload /> 
+                File Analysis
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Upload your source code files for comprehensive analysis including security, performance, and quality checks.
+              </Typography>
+              
+                                <FileUpload 
+                    projectId={projectId}
+                    onAnalysisComplete={handleAnalysisComplete}
+                    onError={handleError}
+                  />
+
+                  <DirectoryScanner
+                    projectId={projectId}
+                    onAnalysisComplete={handleAnalysisComplete}
+                    onError={handleError}
+                  />
+            </CardContent>
+          </Card>
+        </Grid>
+
         <Grid item xs={12} md={8}>
           <Card sx={{ 
             background: 'rgba(255, 255, 255, 0.05)',
