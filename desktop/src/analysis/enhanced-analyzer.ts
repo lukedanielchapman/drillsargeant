@@ -1,12 +1,9 @@
-import * as esprima from 'esprima';
-import { Parser } from '@typescript-eslint/parser';
-import * as cssTree from 'css-tree';
-import * as htmlParser from 'htmlparser2';
 import * as path from 'path';
-import { MobileAnalyzer, type MobileAnalysisResult } from './mobile-analyzer';
+import { parse } from '@typescript-eslint/parser';
+import { MobileAnalyzer } from './mobile-analyzer';
 
 export interface EnhancedAnalysisIssue {
-  type: 'security' | 'quality' | 'performance' | 'accessibility' | 'best-practice' | 'memory-leak' | 'duplication';
+  type: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -15,27 +12,15 @@ export interface EnhancedAnalysisIssue {
   column?: number;
   code?: string;
   suggestion?: string;
-  category: string;
-  impact: string;
   fixExample?: string;
-  cweId?: string; // Common Weakness Enumeration ID
+  impact?: string;
+  cweId?: string;
   owaspCategory?: string;
+  category: string;
 }
 
 export interface EnhancedAnalysisResult {
   issues: EnhancedAnalysisIssue[];
-  metrics: {
-    cyclomaticComplexity: number;
-    linesOfCode: number;
-    functionCount: number;
-    classCount: number;
-    importCount: number;
-    commentRatio: number;
-    duplicationPercentage: number;
-    securityScore: number;
-    performanceScore: number;
-    qualityScore: number;
-  };
   summary: {
     totalIssues: number;
     criticalIssues: number;
@@ -49,76 +34,42 @@ export interface EnhancedAnalysisResult {
     memoryLeakIssues: number;
     duplicationIssues: number;
   };
-  recommendations: {
-    priority: 'immediate' | 'high' | 'medium' | 'low';
-    title: string;
-    description: string;
-    estimatedEffort: number; // hours
-    impact: 'critical' | 'high' | 'medium' | 'low';
-    files: string[];
-  }[];
-  mobileSpecific?: {
-    platformIssues: any[];
-    performanceIssues: any[];
-    accessibilityIssues: any[];
-    securityIssues: any[];
+  metrics: {
+    totalFiles: number;
+    totalLines: number;
+    totalFunctions: number;
+    totalClasses: number;
+    averageComplexity: number;
+    securityScore: number;
+    performanceScore: number;
+    qualityScore: number;
   };
 }
 
 export class EnhancedAnalyzer {
-  private parser: Parser;
+  private parser: any;
   private mobileAnalyzer: MobileAnalyzer;
   private supportedExtensions: string[];
   private excludePatterns: string[];
 
   constructor() {
-    this.parser = new Parser();
+    this.parser = parse;
     this.mobileAnalyzer = new MobileAnalyzer();
     this.supportedExtensions = [
-      // Web Technologies
-      '.js', '.ts', '.jsx', '.tsx', '.vue', '.svelte',
-      // Backend Languages
-      '.py', '.java', '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt',
-      // System Languages
-      '.cpp', '.c', '.h', '.hpp', '.cc', '.cxx',
-      // Scripting Languages
-      '.sh', '.bash', '.zsh', '.ps1', '.bat',
-      // Configuration
-      '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg',
-      // Styling
+      '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte',
       '.css', '.scss', '.sass', '.less',
-      // Templates
       '.html', '.htm', '.xml', '.svg',
-      // Documentation
-      '.md', '.rst', '.txt',
-      // Mobile Development
-      '.dart', '.m', '.mm', '.plist', '.storyboard', '.xib', '.gradle', '.properties',
-      '.xaml', '.axml', '.config.xml'
+      '.dart', '.swift', '.java', '.kt', '.ktm',
+      '.py', '.rb', '.php', '.go', '.rs', '.cs'
     ];
-    
     this.excludePatterns = [
-      // Dependencies
-      'node_modules', 'vendor', 'bower_components', 'jspm_packages',
-      // Build outputs
-      'dist', 'build', 'target', 'out', 'bin', 'obj',
-      // Version control
-      '.git', '.svn', '.hg', '.bzr',
-      // Cache directories
-      '__pycache__', '.pytest_cache', '.cache', '.parcel-cache',
-      // IDE files
-      '.vscode', '.idea', '.vs', '.eclipse',
-      // OS files
-      '.DS_Store', 'Thumbs.db', '.Spotlight-V100',
-      // Logs and temp files
-      'logs', 'tmp', 'temp', '.tmp',
-      // Documentation
-      'docs', 'documentation', 'README.md', 'CHANGELOG.md',
-      // Test files (optional - can be included for analysis)
-      'test', 'tests', '__tests__', 'spec', 'specs',
-      // Mobile-specific exclusions
-      'Pods', 'DerivedData', '.xcuserdata', '.xcworkspace',
-      'build.gradle', 'gradle.properties', 'gradlew', 'gradlew.bat',
-      'android/build', 'android/app/build', 'ios/build'
+      'node_modules', 'vendor', 'Pods', 'DerivedData',
+      '.git', '.svn', '.hg', '.DS_Store',
+      'build', 'dist', '.next', '.nuxt',
+      '*.min.js', '*.min.css', '*.bundle.js',
+      '*.g.dart', '*.freezed.dart', '*.mocks.dart',
+      'R.java', 'BuildConfig.java', '*.generated.*',
+      '*.d.ts', '*.map', '*.log', '*.tmp'
     ];
   }
 
@@ -128,606 +79,619 @@ export class EnhancedAnalyzer {
   filterCustomCodeFiles(files: string[]): string[] {
     return files.filter(file => {
       const ext = path.extname(file).toLowerCase();
-      const isSupportedFile = this.supportedExtensions.includes(ext);
-      
-      // Check if file is in excluded directories
-      const isExcluded = this.excludePatterns.some(pattern => 
-        file.includes(pattern)
-      );
-      
-      // Additional checks for non-custom code
-      const isGeneratedFile = this.isGeneratedFile(file);
-      const isDependencyFile = this.isDependencyFile(file);
-      
-      return isSupportedFile && !isExcluded && !isGeneratedFile && !isDependencyFile;
+      const fileName = path.basename(file).toLowerCase();
+      const filePath = file.toLowerCase();
+
+      // Check if file extension is supported
+      if (!this.supportedExtensions.includes(ext)) {
+        return false;
+      }
+
+      // Check if file should be excluded
+      for (const pattern of this.excludePatterns) {
+        if (pattern.includes('*')) {
+          // Handle wildcard patterns
+          const regex = new RegExp(pattern.replace('*', '.*'));
+          if (regex.test(fileName) || regex.test(filePath)) {
+            return false;
+          }
+        } else {
+          // Handle exact match patterns
+          if (filePath.includes(pattern) || fileName.includes(pattern)) {
+            return false;
+          }
+        }
+      }
+
+      return true;
     });
   }
 
-  private isGeneratedFile(filePath: string): boolean {
-    const generatedPatterns = [
-      '.min.js', '.min.css', '.bundle.js', '.chunk.js',
-      'generated', 'auto-generated', 'machine-generated',
-      '.g.dart', '.freezed.dart', '.mocks.dart', // Flutter generated files
-      '.pb.dart', '.pbenum.dart', // Protocol buffer generated files
-      'R.java', 'BuildConfig.java' // Android generated files
-    ];
-    
-    return generatedPatterns.some(pattern => 
-      filePath.toLowerCase().includes(pattern)
-    );
-  }
-
-  private isDependencyFile(filePath: string): boolean {
-    const dependencyPatterns = [
-      'package-lock.json', 'yarn.lock', 'composer.lock',
-      'requirements.txt', 'Pipfile.lock', 'poetry.lock',
-      'Gemfile.lock', 'Cargo.lock', 'go.mod', 'go.sum',
-      'pubspec.lock', 'Podfile.lock', 'Podfile.lock' // Mobile dependencies
-    ];
-    
-    return dependencyPatterns.some(pattern => 
-      filePath.includes(pattern)
-    );
-  }
-
   /**
-   * Enhanced file analysis with mobile development support
+   * Analyze a file based on its type
    */
   async analyzeFile(filePath: string, content: string): Promise<EnhancedAnalysisResult> {
     const ext = path.extname(filePath).toLowerCase();
     
-    // Mobile development files
-    if (ext === '.dart') {
-      return await this.mobileAnalyzer.analyzeFlutterFile(filePath, content);
-    }
-    
-    if (ext === '.swift' || ext === '.m' || ext === '.mm' || ext === '.h') {
-      return await this.mobileAnalyzer.analyzeIOSFile(filePath, content);
-    }
-    
-    if (ext === '.java' || ext === '.kt' || ext === '.xml') {
-      return await this.mobileAnalyzer.analyzeAndroidFile(filePath, content);
-    }
-    
-    if (ext === '.js' || ext === '.jsx' || ext === '.ts' || ext === '.tsx') {
-      // Check if it's React Native
-      if (content.includes('react-native') || content.includes('import {') && content.includes('from \'react-native\'')) {
-        return await this.mobileAnalyzer.analyzeReactNativeFile(filePath, content);
+    // Route to mobile analyzer for mobile files
+    if (['.dart', '.swift', '.java', '.kt', '.ktm'].includes(ext)) {
+      if (ext === '.dart') {
+        return this.convertMobileResult(await this.mobileAnalyzer.analyzeFlutterFile(filePath, content));
+      } else if (ext === '.swift') {
+        return this.convertMobileResult(await this.mobileAnalyzer.analyzeIOSFile(filePath, content));
+      } else if (['.java', '.kt', '.ktm'].includes(ext)) {
+        return this.convertMobileResult(await this.mobileAnalyzer.analyzeAndroidFile(filePath, content));
       }
-      // Regular JavaScript/TypeScript
-      return await this.analyzeJavaScriptFile(filePath, content);
     }
     
-    // Default to JavaScript analysis for other file types
-    return await this.analyzeJavaScriptFile(filePath, content);
+    // Use enhanced JavaScript analysis for JS/TS files
+    if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+      return this.analyzeJavaScriptFile(filePath, content);
+    }
+    
+    // Use basic analysis for other files
+    return this.analyzeBasicFile(filePath, content);
   }
 
   /**
-   * Enhanced JavaScript/TypeScript analysis with security patterns
+   * Convert MobileAnalysisResult to EnhancedAnalysisResult
+   */
+  private convertMobileResult(mobileResult: any): EnhancedAnalysisResult {
+    return {
+      issues: mobileResult.issues.map((issue: any) => ({
+        type: issue.type,
+        severity: issue.severity,
+        title: issue.title,
+        description: issue.description,
+        file: issue.file,
+        line: issue.line,
+        column: issue.column,
+        code: issue.code,
+        suggestion: issue.suggestion,
+        impact: issue.impact,
+        category: issue.category
+      })),
+      summary: {
+        totalIssues: mobileResult.summary.totalIssues,
+        criticalIssues: mobileResult.summary.criticalIssues,
+        highPriorityIssues: mobileResult.summary.highPriorityIssues,
+        mediumPriorityIssues: mobileResult.summary.mediumPriorityIssues,
+        lowPriorityIssues: mobileResult.summary.lowPriorityIssues,
+        securityIssues: mobileResult.summary.securityIssues,
+        qualityIssues: mobileResult.summary.qualityIssues,
+        performanceIssues: mobileResult.summary.performanceIssues,
+        bestPracticeIssues: 0, // Mobile analyzer doesn't have these
+        memoryLeakIssues: 0,   // Mobile analyzer doesn't have these
+        duplicationIssues: 0    // Mobile analyzer doesn't have these
+      },
+      metrics: {
+        totalFiles: 1,
+        totalLines: mobileResult.metrics.totalLines,
+        totalFunctions: mobileResult.metrics.totalFunctions,
+        totalClasses: mobileResult.metrics.totalClasses,
+        averageComplexity: mobileResult.metrics.averageComplexity,
+        securityScore: 100,
+        performanceScore: 100,
+        qualityScore: 100
+      }
+    };
+  }
+
+  /**
+   * Analyze JavaScript/TypeScript file with enhanced checks
    */
   async analyzeJavaScriptFile(filePath: string, content: string): Promise<EnhancedAnalysisResult> {
     const issues: EnhancedAnalysisIssue[] = [];
     const metrics = {
-      cyclomaticComplexity: 0,
-      linesOfCode: content.split('\n').length,
-      functionCount: 0,
-      classCount: 0,
-      importCount: 0,
-      commentRatio: 0,
-      duplicationPercentage: 0,
+      totalFiles: 1,
+      totalLines: content.split('\n').length,
+      totalFunctions: 0,
+      totalClasses: 0,
+      averageComplexity: 0,
       securityScore: 100,
       performanceScore: 100,
       qualityScore: 100
     };
 
     try {
-      // Parse JavaScript/TypeScript
-      const ast = this.parseJavaScript(content, filePath);
+      // Parse the code
+      const ast = this.parseJavaScript(content);
       
-      // Analyze AST for issues and metrics
-      this.analyzeJavaScriptAST(ast, issues, metrics, filePath);
+      // Analyze for security issues
+      this.analyzeSecurityIssues(ast, issues, filePath);
       
-      // Calculate scores based on issues
-      metrics.securityScore = this.calculateSecurityScore(issues);
-      metrics.performanceScore = this.calculatePerformanceScore(issues);
-      metrics.qualityScore = this.calculateQualityScore(issues);
+      // Analyze for performance issues
+      this.analyzePerformanceIssues(ast, issues, filePath);
       
-      const summary = this.calculateEnhancedSummary(issues);
-      const recommendations = this.generateRecommendations(issues, filePath);
+      // Analyze for code quality issues
+      this.analyzeQualityIssues(ast, issues, filePath);
       
-      return { issues, metrics, summary, recommendations };
+      // Analyze for best practices
+      this.analyzeBestPractices(ast, issues, filePath);
+      
+      // Analyze for memory leaks
+      this.analyzeMemoryLeaks(ast, issues, filePath);
+      
+      // Calculate metrics
+      this.calculateMetrics(ast, metrics, content);
+      
+      // Calculate scores
+      this.calculateScores(issues, metrics);
+
     } catch (error) {
-      console.warn(`Failed to analyze ${filePath}:`, error);
-      return {
-        issues: [{
-          type: 'quality',
-          severity: 'medium',
-          title: 'Parse Error',
-          description: `Failed to parse file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          file: path.basename(filePath),
-          line: 1,
-          category: 'parsing',
-          impact: 'Analysis limited due to parsing errors'
-        }],
-        metrics,
-        summary: { 
-          totalIssues: 1, 
-          criticalIssues: 0,
-          highPriorityIssues: 0, 
-          mediumPriorityIssues: 1, 
-          lowPriorityIssues: 0, 
-          securityIssues: 0, 
-          qualityIssues: 1, 
-          performanceIssues: 0,
-          bestPracticeIssues: 0,
-          memoryLeakIssues: 0,
-          duplicationIssues: 0
-        },
-        recommendations: []
-      };
-    }
-  }
-
-  private analyzeJavaScriptAST(ast: any, issues: EnhancedAnalysisIssue[], metrics: any, filePath: string): void {
-    this.traverseAST(ast, (node) => {
-      // Function analysis
-      if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-        this.analyzeFunction(node, issues, path.basename(filePath));
-        metrics.functionCount++;
-      }
-      
-      // Class analysis
-      if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') {
-        this.analyzeClass(node, issues, path.basename(filePath));
-        metrics.classCount++;
-      }
-      
-      // Import analysis
-      if (node.type === 'ImportDeclaration') {
-        metrics.importCount++;
-      }
-      
-      // Security analysis
-      this.checkSecurityIssues(node, issues, path.basename(filePath));
-      
-      // Performance analysis
-      this.checkPerformanceIssues(node, issues, path.basename(filePath));
-      
-      // Quality analysis
-      this.checkQualityIssues(node, issues, path.basename(filePath));
-      
-      // Best practices analysis
-      this.checkBestPracticeIssues(node, issues, path.basename(filePath));
-      
-      // Memory leak detection
-      this.checkMemoryLeakIssues(node, issues, path.basename(filePath));
-    });
-    
-    // Calculate cyclomatic complexity
-    metrics.cyclomaticComplexity = this.calculateCyclomaticComplexity(ast);
-    
-    // Calculate comment ratio
-    metrics.commentRatio = this.calculateCommentRatio(content);
-  }
-
-  private checkSecurityIssues(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // OWASP Top 10 Security Issues
-    
-    // A1: Injection
-    if (node.type === 'CallExpression' && node.callee.name === 'eval') {
       issues.push({
-        type: 'security',
-        severity: 'critical',
-        title: 'Use of eval() - Code Injection Risk',
-        description: 'eval() can execute arbitrary code and is a major security risk. Use safer alternatives.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Replace eval() with JSON.parse() or Function constructor with proper validation',
-        category: 'injection',
-        impact: 'Critical security vulnerability - potential code execution',
-        cweId: 'CWE-95',
-        owaspCategory: 'A03:2021-Injection'
-      });
-    }
-    
-    // A2: Broken Authentication
-    if (node.type === 'Literal' && typeof node.value === 'string' && 
-        (node.value.includes('password') || node.value.includes('secret') || node.value.includes('key'))) {
-      issues.push({
-        type: 'security',
-        severity: 'high',
-        title: 'Hardcoded Credentials Detected',
-        description: 'Hardcoded passwords, secrets, or API keys are a security risk.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Use environment variables or secure secret management',
-        category: 'authentication',
-        impact: 'Credentials exposed in source code',
-        cweId: 'CWE-259',
-        owaspCategory: 'A07:2021-Identification and Authentication Failures'
-      });
-    }
-    
-    // A3: Sensitive Data Exposure
-    if (node.type === 'Property' && node.key.name === 'innerHTML') {
-      issues.push({
-        type: 'security',
-        severity: 'high',
-        title: 'Potential XSS via innerHTML',
-        description: 'innerHTML can lead to XSS attacks if user input is not properly sanitized.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Use textContent or proper HTML sanitization',
-        category: 'xss',
-        impact: 'Potential cross-site scripting vulnerability',
-        cweId: 'CWE-79',
-        owaspCategory: 'A03:2021-Injection'
-      });
-    }
-  }
-
-  private checkPerformanceIssues(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // Memory leak patterns
-    
-    // Event listeners without cleanup
-    if (node.type === 'CallExpression' && 
-        node.callee.property && node.callee.property.name === 'addEventListener') {
-      issues.push({
-        type: 'performance',
+        type: 'parsing-error',
         severity: 'medium',
-        title: 'Event Listener Without Cleanup',
-        description: 'Event listeners should be removed to prevent memory leaks.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Store reference to listener and remove it when component unmounts',
-        category: 'memory-leak',
-        impact: 'Potential memory leak over time'
+        title: 'Code Parsing Error',
+        description: 'Unable to parse the code for detailed analysis',
+        file: path.basename(filePath),
+        line: 1,
+        category: 'quality'
       });
     }
-    
-    // Inefficient loops
-    if (node.type === 'ForStatement' && node.test && this.isInefficientLoop(node)) {
-      issues.push({
-        type: 'performance',
-        severity: 'medium',
-        title: 'Inefficient Loop Pattern',
-        description: 'This loop pattern may cause performance issues with large datasets.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Consider using forEach, map, or other array methods',
-        category: 'algorithm-efficiency',
-        impact: 'Performance degradation with large datasets'
-      });
-    }
+
+    return {
+      issues,
+      summary: this.calculateSummary(issues),
+      metrics
+    };
   }
 
-  private checkQualityIssues(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // Code quality issues
+  /**
+   * Analyze basic file types
+   */
+  async analyzeBasicFile(filePath: string, content: string): Promise<EnhancedAnalysisResult> {
+    const issues: EnhancedAnalysisIssue[] = [];
+    const metrics = {
+      totalFiles: 1,
+      totalLines: content.split('\n').length,
+      totalFunctions: 0,
+      totalClasses: 0,
+      averageComplexity: 0,
+      securityScore: 100,
+      performanceScore: 100,
+      qualityScore: 100
+    };
+
+    // Basic analysis for non-JavaScript files
+    this.analyzeBasicContent(content, issues, filePath);
     
-    // Long functions
-    if (node.type === 'FunctionDeclaration' && this.getFunctionLength(node) > 50) {
-      issues.push({
-        type: 'quality',
-        severity: 'medium',
-        title: 'Function Too Long',
-        description: 'Functions should be kept short and focused on a single responsibility.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Break down into smaller, focused functions',
-        category: 'code-quality',
-        impact: 'Reduced maintainability and readability'
-      });
-    }
-    
-    // Deep nesting
-    if (this.getNestingDepth(node) > 4) {
-      issues.push({
-        type: 'quality',
-        severity: 'medium',
-        title: 'Excessive Nesting',
-        description: 'Deep nesting makes code hard to read and maintain.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Extract nested conditions into separate functions',
-        category: 'code-quality',
-        impact: 'Reduced code readability'
-      });
-    }
+    return {
+      issues,
+      summary: this.calculateSummary(issues),
+      metrics
+    };
   }
 
-  private checkBestPracticeIssues(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // Best practices violations
-    
-    // Console statements in production
-    if (node.type === 'CallExpression' && 
-        node.callee.object && node.callee.object.name === 'console') {
-      issues.push({
-        type: 'best-practice',
-        severity: 'low',
-        title: 'Console Statement in Code',
-        description: 'Console statements should be removed from production code.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Use proper logging library or remove console statements',
-        category: 'best-practices',
-        impact: 'Debug information exposed in production'
-      });
-    }
-    
-    // Magic numbers
-    if (node.type === 'Literal' && typeof node.value === 'number' && 
-        Math.abs(node.value) > 10 && !this.isCommonNumber(node.value)) {
-      issues.push({
-        type: 'best-practice',
-        severity: 'low',
-        title: 'Magic Number Detected',
-        description: 'Magic numbers should be replaced with named constants.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Define constant with descriptive name',
-        category: 'best-practices',
-        impact: 'Reduced code maintainability'
-      });
-    }
-  }
-
-  private checkMemoryLeakIssues(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // Memory leak patterns
-    
-    // Closures that capture large objects
-    if (node.type === 'FunctionExpression' && this.hasLargeClosure(node)) {
-      issues.push({
-        type: 'memory-leak',
-        severity: 'medium',
-        title: 'Potential Memory Leak in Closure',
-        description: 'Closure may capture large objects, preventing garbage collection.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Consider using weak references or breaking closure chain',
-        category: 'memory-leak',
-        impact: 'Potential memory leak over time'
-      });
-    }
-    
-    // Timers without cleanup
-    if (node.type === 'CallExpression' && 
-        (node.callee.name === 'setTimeout' || node.callee.name === 'setInterval')) {
-      issues.push({
-        type: 'memory-leak',
-        severity: 'medium',
-        title: 'Timer Without Cleanup',
-        description: 'Timers should be cleared to prevent memory leaks.',
-        file: fileName,
-        line: node.loc?.start?.line || 1,
-        column: node.loc?.start?.column,
-        code: this.getNodeCode(node),
-        suggestion: 'Store timer ID and clear it when component unmounts',
-        category: 'memory-leak',
-        impact: 'Potential memory leak and unnecessary CPU usage'
-      });
-    }
-  }
-
-  private calculateSecurityScore(issues: EnhancedAnalysisIssue[]): number {
-    const securityIssues = issues.filter(i => i.type === 'security');
-    const criticalCount = securityIssues.filter(i => i.severity === 'critical').length;
-    const highCount = securityIssues.filter(i => i.severity === 'high').length;
-    const mediumCount = securityIssues.filter(i => i.severity === 'medium').length;
-    
-    return Math.max(0, 100 - (criticalCount * 30) - (highCount * 15) - (mediumCount * 5));
-  }
-
-  private calculatePerformanceScore(issues: EnhancedAnalysisIssue[]): number {
-    const performanceIssues = issues.filter(i => i.type === 'performance');
-    const criticalCount = performanceIssues.filter(i => i.severity === 'critical').length;
-    const highCount = performanceIssues.filter(i => i.severity === 'high').length;
-    const mediumCount = performanceIssues.filter(i => i.severity === 'medium').length;
-    
-    return Math.max(0, 100 - (criticalCount * 25) - (highCount * 10) - (mediumCount * 5));
-  }
-
-  private calculateQualityScore(issues: EnhancedAnalysisIssue[]): number {
-    const qualityIssues = issues.filter(i => i.type === 'quality');
-    const criticalCount = qualityIssues.filter(i => i.severity === 'critical').length;
-    const highCount = qualityIssues.filter(i => i.severity === 'high').length;
-    const mediumCount = qualityIssues.filter(i => i.severity === 'medium').length;
-    
-    return Math.max(0, 100 - (criticalCount * 20) - (highCount * 10) - (mediumCount * 5));
-  }
-
-  private generateRecommendations(issues: EnhancedAnalysisIssue[], filePath: string): any[] {
-    const recommendations = [];
-    
-    // Group issues by category
-    const securityIssues = issues.filter(i => i.type === 'security');
-    const performanceIssues = issues.filter(i => i.type === 'performance');
-    const qualityIssues = issues.filter(i => i.type === 'quality');
-    
-    if (securityIssues.length > 0) {
-      recommendations.push({
-        priority: 'immediate',
-        title: 'Address Security Vulnerabilities',
-        description: `Found ${securityIssues.length} security issues that need immediate attention.`,
-        estimatedEffort: securityIssues.length * 2,
-        impact: 'critical',
-        files: [filePath]
-      });
-    }
-    
-    if (performanceIssues.length > 0) {
-      recommendations.push({
-        priority: 'high',
-        title: 'Optimize Performance Issues',
-        description: `Found ${performanceIssues.length} performance issues that could impact user experience.`,
-        estimatedEffort: performanceIssues.length * 1.5,
-        impact: 'high',
-        files: [filePath]
-      });
-    }
-    
-    if (qualityIssues.length > 0) {
-      recommendations.push({
-        priority: 'medium',
-        title: 'Improve Code Quality',
-        description: `Found ${qualityIssues.length} code quality issues that affect maintainability.`,
-        estimatedEffort: qualityIssues.length * 1,
-        impact: 'medium',
-        files: [filePath]
-      });
-    }
-    
-    return recommendations;
-  }
-
-  // Helper methods
-  private parseJavaScript(content: string, filePath: string): any {
+  /**
+   * Parse JavaScript/TypeScript code
+   */
+  private parseJavaScript(content: string): any {
     try {
-      if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
-        return this.parser.parse(content, {
-          ecmaVersion: 2020,
-          sourceType: 'module',
-          ecmaFeatures: { jsx: true }
-        });
-      } else {
-        return esprima.parse(content, {
-          loc: true,
-          range: true,
-          tokens: true,
-          comment: true
-        });
-      }
+      return this.parser(content, {
+        ecmaVersion: 2020,
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true }
+      });
     } catch (error) {
-      throw new Error(`Failed to parse ${filePath}: ${error}`);
+      throw new Error(`Failed to parse JavaScript: ${error}`);
     }
   }
 
+  /**
+   * Analyze security issues
+   */
+  private analyzeSecurityIssues(ast: any, issues: EnhancedAnalysisIssue[], filePath: string): void {
+    this.traverseAST(ast, (node: any) => {
+      // Check for eval usage
+      if (node.type === 'CallExpression' && node.callee && node.callee.name === 'eval') {
+        issues.push({
+          type: 'security',
+          severity: 'critical',
+          title: 'Use of eval()',
+          description: 'eval() can execute arbitrary code and is a security risk',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Replace eval() with safer alternatives like JSON.parse() or Function constructor',
+          impact: 'Critical security vulnerability',
+          cweId: 'CWE-78',
+          owaspCategory: 'A03:2021-Injection',
+          category: 'security'
+        });
+      }
+
+      // Check for innerHTML usage
+      if (node.type === 'AssignmentExpression' && 
+          node.left && 
+          node.left.property && 
+          node.left.property.name === 'innerHTML') {
+        issues.push({
+          type: 'security',
+          severity: 'high',
+          title: 'Use of innerHTML',
+          description: 'innerHTML can lead to XSS attacks',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Use textContent or createElement instead of innerHTML',
+          impact: 'Potential XSS vulnerability',
+          cweId: 'CWE-79',
+          owaspCategory: 'A03:2021-Injection',
+          category: 'security'
+        });
+      }
+
+      // Check for hardcoded credentials
+      if (node.type === 'VariableDeclarator' && 
+          node.id && 
+          node.id.name && 
+          ['password', 'secret', 'apiKey', 'token'].some(key => 
+            node.id.name.toLowerCase().includes(key))) {
+        issues.push({
+          type: 'security',
+          severity: 'critical',
+          title: 'Hardcoded Credentials',
+          description: 'Potential hardcoded credentials detected',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Use environment variables or secure configuration management',
+          impact: 'Critical security vulnerability',
+          cweId: 'CWE-259',
+          owaspCategory: 'A07:2021-Identification and Authentication Failures',
+          category: 'security'
+        });
+      }
+    });
+  }
+
+  /**
+   * Analyze performance issues
+   */
+  private analyzePerformanceIssues(ast: any, issues: EnhancedAnalysisIssue[], filePath: string): void {
+    this.traverseAST(ast, (node: any) => {
+      // Check for nested loops
+      if (node.type === 'ForStatement' || node.type === 'WhileStatement') {
+        const nestedLoops = this.findNestedLoops(node);
+        if (nestedLoops > 2) {
+          issues.push({
+            type: 'performance',
+            severity: 'medium',
+            title: 'Deeply nested loops',
+            description: `Found ${nestedLoops} levels of nested loops which can impact performance`,
+            file: path.basename(filePath),
+            line: node.loc?.start?.line || 1,
+            column: node.loc?.start?.column || 0,
+            code: this.getNodeCode(node),
+            suggestion: 'Consider refactoring to reduce nesting or use more efficient algorithms',
+            impact: 'Performance degradation',
+            category: 'performance'
+          });
+        }
+      }
+
+      // Check for inefficient array operations
+      if (node.type === 'CallExpression' && 
+          node.callee && 
+          node.callee.property && 
+          ['indexOf', 'includes'].includes(node.callee.property.name)) {
+        issues.push({
+          type: 'performance',
+          severity: 'low',
+          title: 'Inefficient array operation',
+          description: 'Consider using Set or Map for better performance',
+          file: path.basename(filePath),
+            line: node.loc?.start?.line || 1,
+            column: node.loc?.start?.column || 0,
+            code: this.getNodeCode(node),
+            suggestion: 'Use Set or Map for O(1) lookups instead of array methods',
+            impact: 'Performance optimization opportunity',
+            category: 'performance'
+        });
+      }
+    });
+  }
+
+  /**
+   * Analyze code quality issues
+   */
+  private analyzeQualityIssues(ast: any, issues: EnhancedAnalysisIssue[], filePath: string): void {
+    this.traverseAST(ast, (node: any) => {
+      // Check for console statements
+      if (node.type === 'CallExpression' && 
+          node.callee && 
+          node.callee.object && 
+          node.callee.object.name === 'console') {
+        issues.push({
+          type: 'quality',
+          severity: 'low',
+          title: 'Console statement in code',
+          description: 'Console statements should be removed from production code',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Remove console statements or use a logging library',
+          impact: 'Code quality issue',
+          category: 'quality'
+        });
+      }
+
+      // Check for magic numbers
+      if (node.type === 'Literal' && typeof node.value === 'number' && node.value > 100) {
+        issues.push({
+          type: 'quality',
+          severity: 'low',
+          title: 'Magic number',
+          description: `Magic number ${node.value} should be extracted to a named constant`,
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Extract magic numbers to named constants with descriptive names',
+          impact: 'Code maintainability',
+          category: 'quality'
+        });
+      }
+    });
+  }
+
+  /**
+   * Analyze best practices
+   */
+  private analyzeBestPractices(ast: any, issues: EnhancedAnalysisIssue[], filePath: string): void {
+    this.traverseAST(ast, (node: any) => {
+      // Check for proper error handling
+      if (node.type === 'TryStatement' && !node.handler) {
+        issues.push({
+          type: 'best-practice',
+          severity: 'medium',
+          title: 'Missing error handling',
+          description: 'Try block without catch clause',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Add proper error handling with catch clause',
+          impact: 'Potential runtime errors',
+          category: 'best-practice'
+        });
+      }
+    });
+  }
+
+  /**
+   * Analyze memory leaks
+   */
+  private analyzeMemoryLeaks(ast: any, issues: EnhancedAnalysisIssue[], filePath: string): void {
+    this.traverseAST(ast, (node: any) => {
+      // Check for uncleaned event listeners
+      if (node.type === 'CallExpression' && 
+          node.callee && 
+          node.callee.property && 
+          node.callee.property.name === 'addEventListener') {
+        issues.push({
+          type: 'memory-leak',
+          severity: 'medium',
+          title: 'Potential memory leak',
+          description: 'Event listener added without cleanup',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Ensure event listeners are removed when components unmount',
+          impact: 'Memory leak potential',
+          category: 'memory-leak'
+        });
+      }
+
+      // Check for uncleaned timers
+      if (node.type === 'CallExpression' && 
+          node.callee && 
+          node.callee.name && 
+          ['setTimeout', 'setInterval'].includes(node.callee.name)) {
+        issues.push({
+          type: 'memory-leak',
+          severity: 'medium',
+          title: 'Potential memory leak',
+          description: 'Timer set without cleanup',
+          file: path.basename(filePath),
+          line: node.loc?.start?.line || 1,
+          column: node.loc?.start?.column || 0,
+          code: this.getNodeCode(node),
+          suggestion: 'Ensure timers are cleared when components unmount',
+          impact: 'Memory leak potential',
+          category: 'memory-leak'
+        });
+      }
+    });
+  }
+
+  /**
+   * Analyze basic content for non-JavaScript files
+   */
+  private analyzeBasicContent(content: string, issues: EnhancedAnalysisIssue[], filePath: string): void {
+    const lines = content.split('\n');
+    
+    lines.forEach((line, index) => {
+      // Check for hardcoded URLs
+      if (line.includes('http://') && !line.includes('localhost')) {
+        issues.push({
+          type: 'security',
+          severity: 'medium',
+          title: 'Insecure HTTP URL',
+          description: 'HTTP URLs should use HTTPS in production',
+          file: path.basename(filePath),
+          line: index + 1,
+          code: line,
+          suggestion: 'Use HTTPS URLs for production environments',
+          impact: 'Security vulnerability',
+          category: 'security'
+        });
+      }
+    });
+  }
+
+  /**
+   * Traverse AST nodes
+   */
   private traverseAST(node: any, callback: (node: any) => void): void {
+    if (!node || typeof node !== 'object') return;
+    
     callback(node);
     
     for (const key in node) {
-      if (node[key] && typeof node[key] === 'object') {
+      if (node.hasOwnProperty(key) && typeof node[key] === 'object') {
         if (Array.isArray(node[key])) {
-          node[key].forEach((child: any) => {
-            if (child && typeof child === 'object' && child.type) {
-              this.traverseAST(child, callback);
-            }
-          });
-        } else if (node[key].type) {
+          node[key].forEach((child: any) => this.traverseAST(child, callback));
+        } else {
           this.traverseAST(node[key], callback);
         }
       }
     }
   }
 
-  private getNodeCode(node: any): string {
-    // This would need to be implemented based on the source code
-    return '// Code snippet would be extracted here';
+  /**
+   * Find nested loops
+   */
+  private findNestedLoops(node: any, depth: number = 0): number {
+    if (!node) return depth;
+
+    let maxDepth = depth;
+    
+    if (node.type === 'ForStatement' || node.type === 'WhileStatement') {
+      maxDepth = Math.max(maxDepth, depth + 1);
+    }
+
+    if (node.body) {
+      if (Array.isArray(node.body)) {
+        node.body.forEach((child: any) => {
+          maxDepth = Math.max(maxDepth, this.findNestedLoops(child, depth + 1));
+        });
+      } else {
+        maxDepth = Math.max(maxDepth, this.findNestedLoops(node.body, depth + 1));
+      }
+    }
+
+    return maxDepth;
   }
 
-  private calculateCyclomaticComplexity(ast: any): number {
-    let complexity = 1;
-    
-    this.traverseAST(ast, (node) => {
-      if (node.type === 'IfStatement' || node.type === 'SwitchCase' || 
-          node.type === 'ForStatement' || node.type === 'WhileStatement' ||
-          node.type === 'DoWhileStatement' || node.type === 'CatchClause' ||
-          node.type === 'ConditionalExpression') {
+  /**
+   * Get code snippet for a node
+   */
+  private getNodeCode(_node: any): string {
+    // This would extract the actual code for the node
+    // For now, return a placeholder
+    return 'Code snippet not available';
+  }
+
+  /**
+   * Calculate metrics
+   */
+  private calculateMetrics(ast: any, metrics: any, content: string): void {
+    let functionCount = 0;
+    let classCount = 0;
+    let complexity = 0;
+
+    this.traverseAST(ast, (node: any) => {
+      if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
+        functionCount++;
+      }
+      
+      if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') {
+        classCount++;
+      }
+      
+      if (node.type === 'IfStatement' || node.type === 'SwitchCase' || node.type === 'ForStatement' || 
+          node.type === 'WhileStatement' || node.type === 'DoWhileStatement' || node.type === 'CatchClause') {
         complexity++;
       }
     });
-    
-    return complexity;
+
+    metrics.totalFunctions = functionCount;
+    metrics.totalClasses = classCount;
+    metrics.averageComplexity = complexity;
+    metrics.commentRatio = this.calculateCommentRatio(content);
   }
 
+  /**
+   * Calculate comment ratio
+   */
   private calculateCommentRatio(content: string): number {
     const lines = content.split('\n');
     const commentLines = lines.filter(line => 
-      line.trim().startsWith('//') || line.trim().startsWith('/*') || 
-      line.trim().startsWith('*') || line.trim().startsWith('*/')
+      line.trim().startsWith('//') || 
+      line.trim().startsWith('/*') || 
+      line.trim().startsWith('*') ||
+      line.includes('<!--') ||
+      line.includes('-->')
     ).length;
     
-    return (commentLines / lines.length) * 100;
+    return lines.length > 0 ? (commentLines / lines.length) * 100 : 0;
   }
 
-  private calculateEnhancedSummary(issues: EnhancedAnalysisIssue[]): any {
+  /**
+   * Calculate scores based on issues
+   */
+  private calculateScores(issues: EnhancedAnalysisIssue[], metrics: any): void {
+    let securityDeduction = 0;
+    let performanceDeduction = 0;
+    let qualityDeduction = 0;
+
+    issues.forEach(issue => {
+      const deduction = this.getIssueDeduction(issue.severity);
+      
+      switch (issue.category) {
+        case 'security':
+          securityDeduction += deduction;
+          break;
+        case 'performance':
+          performanceDeduction += deduction;
+          break;
+        case 'quality':
+          qualityDeduction += deduction;
+          break;
+      }
+    });
+
+    metrics.securityScore = Math.max(0, 100 - securityDeduction);
+    metrics.performanceScore = Math.max(0, 100 - performanceDeduction);
+    metrics.qualityScore = Math.max(0, 100 - qualityDeduction);
+  }
+
+  /**
+   * Get deduction amount for issue severity
+   */
+  private getIssueDeduction(severity: string): number {
+    switch (severity) {
+      case 'critical': return 30;
+      case 'high': return 20;
+      case 'medium': return 10;
+      case 'low': return 5;
+      default: return 0;
+    }
+  }
+
+  /**
+   * Calculate summary statistics
+   */
+  private calculateSummary(issues: EnhancedAnalysisIssue[]): any {
     return {
       totalIssues: issues.length,
       criticalIssues: issues.filter(i => i.severity === 'critical').length,
       highPriorityIssues: issues.filter(i => i.severity === 'high').length,
       mediumPriorityIssues: issues.filter(i => i.severity === 'medium').length,
       lowPriorityIssues: issues.filter(i => i.severity === 'low').length,
-      securityIssues: issues.filter(i => i.type === 'security').length,
-      qualityIssues: issues.filter(i => i.type === 'quality').length,
-      performanceIssues: issues.filter(i => i.type === 'performance').length,
-      bestPracticeIssues: issues.filter(i => i.type === 'best-practice').length,
-      memoryLeakIssues: issues.filter(i => i.type === 'memory-leak').length,
-      duplicationIssues: issues.filter(i => i.type === 'duplication').length
+      securityIssues: issues.filter(i => i.category === 'security').length,
+      qualityIssues: issues.filter(i => i.category === 'quality').length,
+      performanceIssues: issues.filter(i => i.category === 'performance').length,
+      bestPracticeIssues: issues.filter(i => i.category === 'best-practice').length,
+      memoryLeakIssues: issues.filter(i => i.category === 'memory-leak').length,
+      duplicationIssues: issues.filter(i => i.category === 'duplication').length
     };
-  }
-
-  // Additional helper methods for specific checks
-  private isInefficientLoop(node: any): boolean {
-    // Check for common inefficient loop patterns
-    return node.test && node.test.type === 'BinaryExpression' &&
-           node.test.operator === '<' && node.test.right.type === 'Identifier';
-  }
-
-  private getFunctionLength(node: any): number {
-    if (!node.body || !node.body.loc) return 0;
-    return node.body.loc.end.line - node.body.loc.start.line;
-  }
-
-  private getNestingDepth(node: any): number {
-    let depth = 0;
-    let current = node;
-    
-    while (current.parent) {
-      if (current.parent.type === 'IfStatement' || current.parent.type === 'ForStatement' ||
-          current.parent.type === 'WhileStatement' || current.parent.type === 'SwitchCase') {
-        depth++;
-      }
-      current = current.parent;
-    }
-    
-    return depth;
-  }
-
-  private isCommonNumber(value: number): boolean {
-    return [0, 1, 2, 3, 4, 5, 10, 100, 1000, -1, -2].includes(value);
-  }
-
-  private hasLargeClosure(node: any): boolean {
-    // Simplified check for closure patterns
-    return node.type === 'FunctionExpression' && node.body && 
-           node.body.body && node.body.body.length > 10;
-  }
-
-  // Mobile-specific helper methods
-  private analyzeFunction(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // Function analysis logic
-  }
-
-  private analyzeClass(node: any, issues: EnhancedAnalysisIssue[], fileName: string): void {
-    // Class analysis logic
   }
 } 

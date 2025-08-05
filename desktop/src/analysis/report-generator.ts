@@ -127,9 +127,38 @@ export class ReportGenerator {
   }
 
   /**
+   * Generate detailed HTML report
+   */
+  async generateDetailedReport(results: EnhancedAnalysisResult[], projectPath: string): Promise<string> {
+    const report = await this.generateReport(results, projectPath);
+    const html = this.generateHTMLReport(report);
+    return html;
+  }
+
+  /**
+   * Generate PDF report
+   */
+  async generatePDFReport(results: EnhancedAnalysisResult[], projectPath: string): Promise<string> {
+    // For now, return HTML that can be converted to PDF
+    const report = await this.generateReport(results, projectPath);
+    const html = this.generateHTMLReport(report);
+    return html;
+  }
+
+  /**
+   * Generate Excel report
+   */
+  async generateExcelReport(results: EnhancedAnalysisResult[], projectPath: string): Promise<string> {
+    // For now, return CSV format
+    const report = await this.generateReport(results, projectPath);
+    const csv = this.generateCSVReport(report);
+    return csv;
+  }
+
+  /**
    * Generate HTML report
    */
-  async generateHTMLReport(report: DetailedReport): Promise<string> {
+  private generateHTMLReport(report: DetailedReport): string {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -245,229 +274,102 @@ export class ReportGenerator {
 </html>`;
   }
 
-  /**
-   * Generate PDF report
-   */
-  async generatePDFReport(report: DetailedReport): Promise<Buffer> {
-    // Generate HTML first
-    const html = await this.generateHTMLReport(report);
-    
-    // For Tauri desktop app, we'll use a simple HTML-to-PDF approach
-    // In a production environment, you might use puppeteer or jsPDF
-    const pdfContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>DrillSargeant Analysis Report</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-            .summary { background: #f5f5f5; padding: 20px; margin: 20px 0; border-radius: 5px; }
-            .issues { margin: 20px 0; }
-            .issue { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
-            .critical { border-left: 5px solid #dc3545; }
-            .high { border-left: 5px solid #fd7e14; }
-            .medium { border-left: 5px solid #ffc107; }
-            .low { border-left: 5px solid #28a745; }
-            .score { font-size: 24px; font-weight: bold; }
-            .excellent { color: #28a745; }
-            .good { color: #ffc107; }
-            .poor { color: #dc3545; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            .recommendations { margin: 20px 0; }
-            .recommendation { background: #e7f3ff; padding: 15px; margin: 10px 0; border-radius: 5px; }
-            .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
-            .metric { text-align: center; padding: 15px; background: #f8f9fa; border-radius: 5px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>DrillSargeant Analysis Report</h1>
-            <p>Generated on ${new Date().toLocaleDateString()}</p>
-          </div>
-          
-          <div class="summary">
-            <h2>Executive Summary</h2>
-            <div class="metrics">
-              <div class="metric">
-                <h3>Overall Score</h3>
-                <div class="score ${this.getScoreClass(report.summary.overallScore)}">${report.summary.overallScore}/100</div>
-              </div>
-              <div class="metric">
-                <h3>Total Issues</h3>
-                <div class="score">${report.summary.totalIssues}</div>
-              </div>
-              <div class="metric">
-                <h3>Critical Issues</h3>
-                <div class="score">${report.summary.criticalIssues}</div>
-              </div>
-              <div class="metric">
-                <h3>Files Analyzed</h3>
-                <div class="score">${report.summary.totalFiles}</div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="issues">
-            <h2>Issues Breakdown</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Severity</th>
-                  <th>Type</th>
-                  <th>File</th>
-                  <th>Line</th>
-                  <th>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${report.issues.map(issue => `
-                  <tr class="${issue.severity}">
-                    <td>${issue.severity.toUpperCase()}</td>
-                    <td>${issue.type}</td>
-                    <td>${issue.relativePath}</td>
-                    <td>${issue.line}</td>
-                    <td>${issue.title}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-          
-          ${report.recommendations.length > 0 ? `
-          <div class="recommendations">
-            <h2>Recommendations</h2>
-            ${report.recommendations.map(rec => `
-              <div class="recommendation">
-                <h3>${rec.title}</h3>
-                <p><strong>Priority:</strong> ${rec.priority}</p>
-                <p><strong>Estimated Effort:</strong> ${rec.estimatedEffort} hours</p>
-                <p><strong>Impact:</strong> ${rec.impact}</p>
-                <p>${rec.description}</p>
-              </div>
-            `).join('')}
-          </div>
-          ` : ''}
-          
-          <div class="metrics">
-            <h2>Code Metrics</h2>
-            <table>
-              <tr>
-                <td>Total Lines of Code</td>
-                <td>${report.metrics.totalLinesOfCode}</td>
-              </tr>
-              <tr>
-                <td>Average Complexity</td>
-                <td>${report.metrics.averageComplexity.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td>Total Functions</td>
-                <td>${report.metrics.totalFunctions}</td>
-              </tr>
-              <tr>
-                <td>Total Classes</td>
-                <td>${report.metrics.totalClasses}</td>
-              </tr>
-              <tr>
-                <td>Comment Ratio</td>
-                <td>${report.metrics.commentRatio.toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>Duplication Percentage</td>
-                <td>${report.metrics.duplicationPercentage.toFixed(2)}%</td>
-              </tr>
-            </table>
-          </div>
-        </body>
-      </html>
-    `;
-    
-    // Convert HTML to PDF-like format (simplified for Tauri)
-    // In production, you would use a proper PDF library
-    return Buffer.from(pdfContent, 'utf-8');
-  }
-
-  /**
-   * Generate Excel report
-   */
-  async generateExcelReport(report: DetailedReport): Promise<Buffer> {
-    // Create CSV format for Excel compatibility
-    // In production, you would use a library like exceljs
-    
-    const csvContent = this.generateCSVReport(report);
-    return Buffer.from(csvContent, 'utf-8');
-  }
-
-  /**
-   * Generate CSV report for Excel compatibility
-   */
   private generateCSVReport(report: DetailedReport): string {
     const lines: string[] = [];
     
-    // Header
-    lines.push('DrillSargeant Analysis Report');
-    lines.push(`Generated on ${new Date().toLocaleDateString()}`);
+    // Summary section
+    lines.push('Summary');
+    lines.push('Overall Score,' + report.summary.overallScore);
+    lines.push('Total Issues,' + report.summary.totalIssues);
+    lines.push('Critical Issues,' + report.summary.criticalIssues);
+    lines.push('High Priority Issues,' + report.summary.highPriorityIssues);
+    lines.push('Medium Priority Issues,' + report.summary.mediumPriorityIssues);
+    lines.push('Low Priority Issues,' + report.summary.lowPriorityIssues);
     lines.push('');
     
-    // Summary
-    lines.push('SUMMARY');
-    lines.push('Metric,Value');
-    lines.push(`Overall Score,${report.summary.overallScore}`);
-    lines.push(`Total Issues,${report.summary.totalIssues}`);
-    lines.push(`Critical Issues,${report.summary.criticalIssues}`);
-    lines.push(`High Priority Issues,${report.summary.highPriorityIssues}`);
-    lines.push(`Medium Priority Issues,${report.summary.mediumPriorityIssues}`);
-    lines.push(`Low Priority Issues,${report.summary.lowPriorityIssues}`);
-    lines.push(`Files Analyzed,${report.summary.totalFiles}`);
-    lines.push('');
-    
-    // Issues
-    lines.push('ISSUES');
-    lines.push('Severity,Type,File,Line,Title,Description,Suggestion');
+    // Issues section
+    lines.push('Issues');
+    lines.push('Severity,Type,File,Line,Description,Impact');
     report.issues.forEach(issue => {
-      lines.push(`"${issue.severity}","${issue.type}","${issue.relativePath}",${issue.line},"${issue.title}","${issue.description.replace(/"/g, '""')}","${issue.suggestion.replace(/"/g, '""')}"`);
+      lines.push(`${issue.severity},${issue.type},${issue.relativePath},${issue.line},"${issue.title}","${issue.impact || 'N/A'}"`);
     });
     lines.push('');
     
-    // Metrics
-    lines.push('METRICS');
-    lines.push('Metric,Value');
-    lines.push(`Total Lines of Code,${report.metrics.totalLinesOfCode}`);
-    lines.push(`Average Complexity,${report.metrics.averageComplexity.toFixed(2)}`);
-    lines.push(`Total Functions,${report.metrics.totalFunctions}`);
-    lines.push(`Total Classes,${report.metrics.totalClasses}`);
-    lines.push(`Comment Ratio,${report.metrics.commentRatio.toFixed(2)}%`);
-    lines.push(`Duplication Percentage,${report.metrics.duplicationPercentage.toFixed(2)}%`);
+    // Metrics section
+    lines.push('Metrics');
+    lines.push('Total Lines of Code,' + report.metrics.totalLinesOfCode);
+    lines.push('Average Complexity,' + report.metrics.averageComplexity.toFixed(2));
+    lines.push('Total Functions,' + report.metrics.totalFunctions);
+    lines.push('Total Classes,' + report.metrics.totalClasses);
+    lines.push('Comment Ratio,' + report.metrics.commentRatio.toFixed(2) + '%');
+    lines.push('Duplication Percentage,' + report.metrics.duplicationPercentage.toFixed(2) + '%');
     lines.push('');
     
-    // Recommendations
+    // Recommendations section
     if (report.recommendations.length > 0) {
-      lines.push('RECOMMENDATIONS');
-      lines.push('Priority,Title,Description,Estimated Effort (hours),Impact');
+      lines.push('Recommendations');
+      lines.push('Priority,Title,Description,Estimated Effort,Impact');
       report.recommendations.forEach(rec => {
-        lines.push(`"${rec.priority}","${rec.title}","${rec.description.replace(/"/g, '""')}",${rec.estimatedEffort},"${rec.impact}"`);
+        lines.push(`${rec.priority},"${rec.title}","${rec.description}",${rec.estimatedEffort} hours,${rec.impact}`);
       });
-      lines.push('');
     }
     
-    // File Summary
-    lines.push('FILE SUMMARY');
-    lines.push('File,Issues,Critical,High,Medium,Low,Security,Quality,Performance,Score');
-    report.files.forEach(file => {
-      lines.push(`"${file.relativePath}",${file.issues},${file.criticalIssues},${file.highPriorityIssues},${file.mediumPriorityIssues},${file.lowPriorityIssues},${file.securityIssues},${file.qualityIssues},${file.performanceIssues},${file.score}`);
+    // File summary section
+    lines.push('');
+    lines.push('File Summary');
+    lines.push('File,Issues,Critical,High,Medium,Low');
+    const fileSummary = this.generateFileSummary(report.issues);
+    fileSummary.forEach(file => {
+      lines.push(`${file.file},${file.totalIssues},${file.criticalIssues},${file.highPriorityIssues},${file.mediumPriorityIssues},${file.lowPriorityIssues}`);
     });
     
     return lines.join('\n');
+  }
+
+  private generateFileSummary(issues: DetailedIssue[]): any[] {
+    const fileMap = new Map<string, any>();
+    
+    issues.forEach(issue => {
+      if (!fileMap.has(issue.relativePath)) {
+        fileMap.set(issue.relativePath, {
+          file: issue.relativePath,
+          totalIssues: 0,
+          criticalIssues: 0,
+          highPriorityIssues: 0,
+          mediumPriorityIssues: 0,
+          lowPriorityIssues: 0
+        });
+      }
+      
+      const fileStats = fileMap.get(issue.relativePath);
+      fileStats.totalIssues++;
+      
+      switch (issue.severity) {
+        case 'critical':
+          fileStats.criticalIssues++;
+          break;
+        case 'high':
+          fileStats.highPriorityIssues++;
+          break;
+        case 'medium':
+          fileStats.mediumPriorityIssues++;
+          break;
+        case 'low':
+          fileStats.lowPriorityIssues++;
+          break;
+      }
+    });
+    
+    return Array.from(fileMap.values());
   }
 
   private collectAllIssues(results: EnhancedAnalysisResult[]): EnhancedAnalysisIssue[] {
     const allIssues: EnhancedAnalysisIssue[] = [];
     
     results.forEach(result => {
-      allIssues.push(...result.issues);
+      if (result.issues) {
+        allIssues.push(...result.issues);
+      }
     });
     
     return allIssues;
@@ -486,23 +388,23 @@ export class ReportGenerator {
 
   private createDetailedIssues(issues: EnhancedAnalysisIssue[], projectPath: string): DetailedIssue[] {
     return issues.map((issue, index) => ({
-      id: `issue-${index + 1}`,
+      id: `issue-${index}`,
       type: issue.type,
       severity: issue.severity,
       title: issue.title,
       description: issue.description,
       file: issue.file,
+      filePath: path.resolve(projectPath, issue.file), // Full path for navigation
       line: issue.line,
       column: issue.column,
-      codeSnippet: issue.code || 'Code snippet not available',
-      suggestion: issue.suggestion || 'No specific suggestion available',
-      fixExample: issue.fixExample,
-      impact: issue.impact,
-      cweId: issue.cweId,
-      owaspCategory: issue.owaspCategory,
+      codeSnippet: issue.code || '',
+      suggestion: issue.suggestion || '',
+      fixExample: issue.fixExample || '',
+      impact: issue.impact || 'Unknown', // Ensure impact is always a string
+      cweId: issue.cweId || '',
+      owaspCategory: issue.owaspCategory || '',
       category: issue.category,
-      filePath: path.join(projectPath, issue.file),
-      relativePath: issue.file
+      relativePath: issue.file // Relative path for display
     }));
   }
 
@@ -651,19 +553,19 @@ export class ReportGenerator {
   }
 
   private calculateMetrics(results: EnhancedAnalysisResult[]): any {
-    const totalLines = results.reduce((sum, r) => sum + r.metrics.linesOfCode, 0);
-    const totalComplexity = results.reduce((sum, r) => sum + r.metrics.cyclomaticComplexity, 0);
-    const totalFunctions = results.reduce((sum, r) => sum + r.metrics.functionCount, 0);
-    const totalClasses = results.reduce((sum, r) => sum + r.metrics.classCount, 0);
-    const totalCommentRatio = results.reduce((sum, r) => sum + r.metrics.commentRatio, 0);
+    const totalFiles = results.length;
+    const totalLines = results.reduce((sum, r) => sum + (r.metrics?.totalLines || 0), 0);
+    const totalComplexity = results.reduce((sum, r) => sum + (r.metrics?.averageComplexity || 0), 0);
+    const totalFunctions = results.reduce((sum, r) => sum + (r.metrics?.totalFunctions || 0), 0);
+    const totalClasses = results.reduce((sum, r) => sum + (r.metrics?.totalClasses || 0), 0);
     
     return {
       totalLinesOfCode: totalLines,
-      averageComplexity: results.length > 0 ? totalComplexity / results.length : 0,
+      averageComplexity: totalFiles > 0 ? totalComplexity / totalFiles : 0,
       totalFunctions,
       totalClasses,
-      commentRatio: results.length > 0 ? totalCommentRatio / results.length : 0,
-      duplicationPercentage: 0 // Would be calculated by duplication detection
+      commentRatio: 0, // Not available in EnhancedAnalysisResult metrics
+      duplicationPercentage: 0 // Would need to calculate from content
     };
   }
 

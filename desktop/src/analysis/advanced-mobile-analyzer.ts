@@ -1,15 +1,17 @@
 import * as path from 'path';
-import { MobileAnalyzer, type MobileAnalysisResult } from './mobile-analyzer';
 
 export interface AdvancedMobileSecurityIssue {
-  type: 'certificate-pinning' | 'biometric-auth' | 'secure-storage' | 'network-security' | 'permission-handling' | 'code-obfuscation';
+  type: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
   file: string;
   line: number;
+  codeSnippet: string;
   suggestion: string;
   impact: string;
+  framework: string;
+  securityPattern: string;
   cweId?: string;
   owaspCategory?: string;
 }
@@ -39,7 +41,7 @@ export interface AdvancedMobileAccessibilityIssue {
   wcagCriteria: string;
 }
 
-export interface AdvancedMobileAnalysisResult extends MobileAnalysisResult {
+export interface AdvancedMobileAnalysisResult {
   advancedSecurity: AdvancedMobileSecurityIssue[];
   advancedPerformance: AdvancedMobilePerformanceIssue[];
   advancedAccessibility: AdvancedMobileAccessibilityIssue[];
@@ -54,10 +56,93 @@ export interface AdvancedMobileAnalysisResult extends MobileAnalysisResult {
 }
 
 export class AdvancedMobileAnalyzer {
-  private mobileAnalyzer: MobileAnalyzer;
+  private securityPatterns: Map<string, RegExp[]>;
+  private performancePatterns: Map<string, RegExp[]>;
+  private accessibilityPatterns: Map<string, RegExp[]>;
+  private vulnerabilityDatabase: Map<string, any>;
 
   constructor() {
-    this.mobileAnalyzer = new MobileAnalyzer();
+    this.securityPatterns = new Map();
+    this.performancePatterns = new Map();
+    this.accessibilityPatterns = new Map();
+    this.vulnerabilityDatabase = new Map();
+    this.initializePatterns();
+    this.initializeVulnerabilityDatabase();
+  }
+
+  /**
+   * Initialize security, performance, and accessibility patterns
+   */
+  private initializePatterns(): void {
+    // Security patterns
+    this.securityPatterns.set('hardcoded-credentials', [
+      /password\s*=\s*['"][^'"]+['"]/,
+      /apiKey\s*=\s*['"][^'"]+['"]/,
+      /secret\s*=\s*['"][^'"]+['"]/,
+      /token\s*=\s*['"][^'"]+['"]/
+    ]);
+
+    this.securityPatterns.set('insecure-http', [
+      /http:\/\/[^'"]+/,
+      /NSAppTransportSecurity.*NSAllowsArbitraryLoads.*true/,
+      /android:usesCleartextTraffic.*true/
+    ]);
+
+    this.securityPatterns.set('weak-crypto', [
+      /MD5\(/,
+      /SHA1\(/,
+      /CryptoJS\.MD5/,
+      /CryptoJS\.SHA1/
+    ]);
+
+    // Performance patterns
+    this.performancePatterns.set('memory-leak', [
+      /addEventListener\([^)]+\)/,
+      /setTimeout\([^)]+\)/,
+      /setInterval\([^)]+\)/,
+      /new\s+EventTarget\(\)/
+    ]);
+
+    this.performancePatterns.set('inefficient-loops', [
+      /for\s*\(\s*let\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*array\.length/,
+      /forEach\s*\(\s*function\s*\(/,
+      /map\s*\(\s*function\s*\(/
+    ]);
+
+    // Accessibility patterns
+    this.accessibilityPatterns.set('missing-alt', [
+      /<img[^>]*>/,
+      /<Image[^>]*>/
+    ]);
+
+    this.accessibilityPatterns.set('missing-label', [
+      /<input[^>]*>/,
+      /<button[^>]*>/
+    ]);
+  }
+
+  /**
+   * Initialize vulnerability database
+   */
+  private initializeVulnerabilityDatabase(): void {
+    // Common vulnerabilities
+    this.vulnerabilityDatabase.set('sql-injection', {
+      patterns: [/SELECT.*FROM.*WHERE.*\$\{/],
+      severity: 'critical',
+      description: 'Potential SQL injection vulnerability'
+    });
+
+    this.vulnerabilityDatabase.set('xss', {
+      patterns: [/innerHTML\s*=\s*[^;]+/],
+      severity: 'high',
+      description: 'Potential XSS vulnerability'
+    });
+
+    this.vulnerabilityDatabase.set('path-traversal', {
+      patterns: [/\.\.\/\.\.\//],
+      severity: 'high',
+      description: 'Potential path traversal vulnerability'
+    });
   }
 
   /**
@@ -276,8 +361,11 @@ export class AdvancedMobileAnalyzer {
           description: 'Network requests without certificate pinning are vulnerable to man-in-the-middle attacks',
           file: fileName,
           line: lineNumber,
+          codeSnippet: line,
           suggestion: 'Implement certificate pinning using dio_certificate_pinning or similar packages',
           impact: 'Network traffic vulnerable to interception',
+          framework: 'flutter',
+          securityPattern: 'certificate-pinning',
           cweId: 'CWE-295',
           owaspCategory: 'A05:2021-Security Misconfiguration'
         });
@@ -295,8 +383,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Consider using biometric authentication for enhanced security',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Implement biometric authentication using local_auth package',
         impact: 'Reduced security compared to biometric authentication',
+        framework: 'flutter',
+        securityPattern: 'biometric-auth',
         cweId: 'CWE-287',
         owaspCategory: 'A07:2021-Identification and Authentication Failures'
       });
@@ -313,8 +404,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Sensitive data stored in SharedPreferences without encryption',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Use flutter_secure_storage for sensitive data',
         impact: 'Data exposure if device is compromised',
+        framework: 'flutter',
+        securityPattern: 'secure-storage',
         cweId: 'CWE-311',
         owaspCategory: 'A02:2021-Cryptographic Failures'
       });
@@ -331,8 +425,11 @@ export class AdvancedMobileAnalyzer {
         description: 'HTTP requests are not encrypted and vulnerable to interception',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Use HTTPS for all network requests',
         impact: 'Data interception and man-in-the-middle attacks',
+        framework: 'flutter',
+        securityPattern: 'network-security',
         cweId: 'CWE-319',
         owaspCategory: 'A02:2021-Cryptographic Failures'
       });
@@ -349,8 +446,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Runtime permissions should be properly requested and handled',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Use permission_handler package for proper permission management',
         impact: 'Poor user experience and potential security issues',
+        framework: 'flutter',
+        securityPattern: 'permission-handling',
         cweId: 'CWE-285',
         owaspCategory: 'A01:2021-Broken Access Control'
       });
@@ -367,8 +467,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Code obfuscation helps protect against reverse engineering',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Enable code obfuscation in build.gradle',
         impact: 'Code is more vulnerable to reverse engineering',
+        framework: 'flutter',
+        securityPattern: 'code-obfuscation',
         cweId: 'CWE-656',
         owaspCategory: 'A05:2021-Security Misconfiguration'
       });
@@ -377,35 +480,35 @@ export class AdvancedMobileAnalyzer {
 
   // Flutter Performance Analysis Methods
   private checkFlutterBatteryDrain(line: string, lineNumber: number, fileName: string, issues: AdvancedMobilePerformanceIssue[]): void {
-    // Check for battery-draining operations
-    if (line.includes('Timer.periodic') && line.includes('Duration(seconds: 1)')) {
+    // Check for battery drain patterns
+    if (line.includes('setInterval') || line.includes('setTimeout')) {
       issues.push({
         type: 'battery-drain',
-        severity: 'high',
-        title: 'Battery-Draining Timer',
-        description: 'Frequent timer operations can drain battery quickly',
+        severity: 'medium',
+        title: 'Potential Battery Drain',
+        description: 'Continuous timers can drain battery',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Use longer intervals or implement smart polling',
-        impact: 'Significant battery drain',
-        performanceImpact: 'high'
+        suggestion: 'Use requestAnimationFrame or optimize timer usage',
+        impact: 'Reduced battery life',
+        performanceImpact: 'medium'
       });
     }
   }
 
   private checkFlutterMemoryLeak(line: string, lineNumber: number, fileName: string, issues: AdvancedMobilePerformanceIssue[]): void {
     // Check for memory leak patterns
-    if (line.includes('StreamController') && !line.includes('dispose')) {
+    if (line.includes('addEventListener') && !line.includes('removeEventListener')) {
       issues.push({
         type: 'memory-leak',
-        severity: 'medium',
-        title: 'Potential Memory Leak in Stream',
-        description: 'StreamController should be disposed to prevent memory leaks',
+        severity: 'high',
+        title: 'Potential Memory Leak',
+        description: 'Event listeners not properly removed',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Call dispose() on StreamController in dispose() method',
+        suggestion: 'Always remove event listeners in dispose method',
         impact: 'Memory usage increases over time',
-        performanceImpact: 'medium'
+        performanceImpact: 'high'
       });
     }
   }
@@ -416,8 +519,8 @@ export class AdvancedMobileAnalyzer {
       issues.push({
         type: 'network-inefficiency',
         severity: 'medium',
-        title: 'No Network Caching',
-        description: 'Network requests without caching can be inefficient',
+        title: 'Network Inefficiency',
+        description: 'Network requests without caching',
         file: fileName,
         line: lineNumber,
         suggestion: 'Implement caching for network requests',
@@ -429,15 +532,15 @@ export class AdvancedMobileAnalyzer {
 
   private checkFlutterUIPerformance(line: string, lineNumber: number, fileName: string, issues: AdvancedMobilePerformanceIssue[]): void {
     // Check for UI performance issues
-    if (line.includes('ListView.builder') && !line.includes('itemCount')) {
+    if (line.includes('ListView.builder') && !line.includes('itemExtent')) {
       issues.push({
         type: 'ui-performance',
         severity: 'medium',
-        title: 'Inefficient ListView',
-        description: 'ListView without itemCount can cause performance issues',
+        title: 'UI Performance Issue',
+        description: 'ListView without itemExtent can cause performance issues',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Provide itemCount for better ListView performance',
+        suggestion: 'Provide itemExtent for better ListView performance',
         impact: 'UI lag and poor scrolling performance',
         performanceImpact: 'medium'
       });
@@ -446,32 +549,32 @@ export class AdvancedMobileAnalyzer {
 
   private checkFlutterStorageOptimization(line: string, lineNumber: number, fileName: string, issues: AdvancedMobilePerformanceIssue[]): void {
     // Check for storage optimization
-    if (line.includes('File.readAsString') && line.includes('await')) {
+    if (line.includes('SharedPreferences') && line.includes('setString')) {
       issues.push({
         type: 'storage-optimization',
         severity: 'low',
-        title: 'Synchronous File Reading',
-        description: 'Large file reading on main thread can cause UI freezing',
+        title: 'Storage Optimization',
+        description: 'Large data stored in SharedPreferences',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Use compute() for large file operations',
-        impact: 'UI freezing during file operations',
+        suggestion: 'Use background threads for large storage operations',
+        impact: 'UI freezing during storage operations',
         performanceImpact: 'low'
       });
     }
   }
 
   private checkFlutterBackgroundTasks(line: string, lineNumber: number, fileName: string, issues: AdvancedMobilePerformanceIssue[]): void {
-    // Check for background task handling
-    if (line.includes('Timer') && line.includes('periodic')) {
+    // Check for background task issues
+    if (line.includes('Timer.periodic') || line.includes('compute')) {
       issues.push({
         type: 'background-task',
         severity: 'medium',
-        title: 'Background Task Without Lifecycle Management',
-        description: 'Background tasks should be properly managed with app lifecycle',
+        title: 'Background Task Management',
+        description: 'Background tasks may drain battery',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Use Workmanager or proper lifecycle management',
+        suggestion: 'Use proper background task management',
         impact: 'Battery drain and unnecessary processing',
         performanceImpact: 'medium'
       });
@@ -481,12 +584,12 @@ export class AdvancedMobileAnalyzer {
   // Flutter Accessibility Analysis Methods
   private checkFlutterScreenReader(line: string, lineNumber: number, fileName: string, issues: AdvancedMobileAccessibilityIssue[]): void {
     // Check for screen reader support
-    if (line.includes('GestureDetector') && !line.includes('semanticsLabel')) {
+    if (line.includes('Text(') && !line.includes('semanticsLabel')) {
       issues.push({
         type: 'screen-reader',
         severity: 'medium',
         title: 'Missing Screen Reader Support',
-        description: 'GestureDetector without semantic label is not accessible',
+        description: 'Text without semantics label',
         file: fileName,
         line: lineNumber,
         suggestion: 'Add semanticsLabel for screen reader support',
@@ -503,8 +606,8 @@ export class AdvancedMobileAnalyzer {
       issues.push({
         type: 'navigation',
         severity: 'medium',
-        title: 'Inaccessible Navigation',
-        description: 'Navigation without proper accessibility labels',
+        title: 'Navigation Accessibility Issue',
+        description: 'Navigation without accessibility labels',
         file: fileName,
         line: lineNumber,
         suggestion: 'Add accessibility labels to navigation elements',
@@ -516,13 +619,13 @@ export class AdvancedMobileAnalyzer {
   }
 
   private checkFlutterContrast(line: string, lineNumber: number, fileName: string, issues: AdvancedMobileAccessibilityIssue[]): void {
-    // Check for contrast ratios
-    if (line.includes('Colors.white') && line.includes('Colors.white')) {
+    // Check for contrast issues
+    if (line.includes('Colors.') && (line.includes('grey') || line.includes('gray'))) {
       issues.push({
         type: 'contrast',
         severity: 'medium',
-        title: 'Poor Color Contrast',
-        description: 'White text on white background has insufficient contrast',
+        title: 'Potential Contrast Issue',
+        description: 'Low contrast colors may affect readability',
         file: fileName,
         line: lineNumber,
         suggestion: 'Use colors with sufficient contrast ratio (4.5:1 minimum)',
@@ -534,42 +637,34 @@ export class AdvancedMobileAnalyzer {
   }
 
   private checkFlutterTouchTargets(line: string, lineNumber: number, fileName: string, issues: AdvancedMobileAccessibilityIssue[]): void {
-    // Check for touch target sizes
-    if (line.includes('SizedBox') && line.includes('height:') && line.includes('width:')) {
-      const heightMatch = line.match(/height:\s*(\d+)/);
-      const widthMatch = line.match(/width:\s*(\d+)/);
-      if (heightMatch && widthMatch) {
-        const height = parseInt(heightMatch[1]);
-        const width = parseInt(widthMatch[1]);
-        if (height < 48 || width < 48) {
-          issues.push({
-            type: 'touch-target',
-            severity: 'medium',
-            title: 'Small Touch Target',
-            description: 'Touch target smaller than 48x48 pixels',
-            file: fileName,
-            line: lineNumber,
-            suggestion: 'Increase touch target size to at least 48x48 pixels',
-            impact: 'Difficult to tap for users with motor impairments',
-            wcagLevel: 'AA',
-            wcagCriteria: '2.5.5'
-          });
-        }
-      }
+    // Check for touch target size
+    if (line.includes('GestureDetector') || line.includes('InkWell')) {
+      issues.push({
+        type: 'touch-target',
+        severity: 'low',
+        title: 'Touch Target Size',
+        description: 'Touch targets should be at least 48x48 pixels',
+        file: fileName,
+        line: lineNumber,
+        suggestion: 'Increase touch target size to at least 48x48 pixels',
+        impact: 'Difficult to tap for users with motor impairments',
+        wcagLevel: 'AA',
+        wcagCriteria: '2.5.5'
+      });
     }
   }
 
   private checkFlutterSemanticMarkup(line: string, lineNumber: number, fileName: string, issues: AdvancedMobileAccessibilityIssue[]): void {
     // Check for semantic markup
-    if (line.includes('Container') && !line.includes('semanticsLabel')) {
+    if (line.includes('Container(') && !line.includes('semanticsLabel')) {
       issues.push({
         type: 'semantic',
         severity: 'low',
-        title: 'Missing Semantic Information',
-        description: 'Container without semantic label lacks accessibility information',
+        title: 'Missing Semantic Markup',
+        description: 'Container without semantic information',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Add semantic labels to improve accessibility',
+        suggestion: 'Add accessibilityRole to improve accessibility',
         impact: 'Reduced accessibility for screen reader users',
         wcagLevel: 'A',
         wcagCriteria: '1.3.1'
@@ -578,16 +673,16 @@ export class AdvancedMobileAnalyzer {
   }
 
   private checkFlutterWCAGCompliance(line: string, lineNumber: number, fileName: string, issues: AdvancedMobileAccessibilityIssue[]): void {
-    // Check for WCAG compliance patterns
+    // Check for WCAG compliance
     if (line.includes('autofocus') && !line.includes('semanticsLabel')) {
       issues.push({
         type: 'wcag-compliance',
         severity: 'medium',
         title: 'WCAG Compliance Issue',
-        description: 'Autofocus without proper accessibility support',
+        description: 'Auto-focus without proper accessibility support',
         file: fileName,
         line: lineNumber,
-        suggestion: 'Ensure autofocus elements have proper accessibility labels',
+        suggestion: 'Ensure autoFocus elements have proper accessibility labels',
         impact: 'Poor accessibility compliance',
         wcagLevel: 'A',
         wcagCriteria: '2.4.3'
@@ -606,8 +701,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Network requests without certificate pinning are vulnerable',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Implement certificate pinning using react-native-ssl-pinning',
         impact: 'Network traffic vulnerable to interception',
+        framework: 'react-native',
+        securityPattern: 'certificate-pinning',
         cweId: 'CWE-295',
         owaspCategory: 'A05:2021-Security Misconfiguration'
       });
@@ -624,8 +722,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Consider using biometric authentication for enhanced security',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Implement biometric authentication using react-native-biometrics',
         impact: 'Reduced security compared to biometric authentication',
+        framework: 'react-native',
+        securityPattern: 'biometric-auth',
         cweId: 'CWE-287',
         owaspCategory: 'A07:2021-Identification and Authentication Failures'
       });
@@ -642,8 +743,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Sensitive data stored in AsyncStorage without encryption',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Use react-native-keychain for sensitive data',
         impact: 'Data exposure if device is compromised',
+        framework: 'react-native',
+        securityPattern: 'secure-storage',
         cweId: 'CWE-311',
         owaspCategory: 'A02:2021-Cryptographic Failures'
       });
@@ -660,8 +764,11 @@ export class AdvancedMobileAnalyzer {
         description: 'HTTP requests are not encrypted and vulnerable to interception',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Use HTTPS for all network requests',
         impact: 'Data interception and man-in-the-middle attacks',
+        framework: 'react-native',
+        securityPattern: 'network-security',
         cweId: 'CWE-319',
         owaspCategory: 'A02:2021-Cryptographic Failures'
       });
@@ -678,8 +785,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Runtime permissions should be properly requested and handled',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Use react-native-permissions for proper permission management',
         impact: 'Poor user experience and potential security issues',
+        framework: 'react-native',
+        securityPattern: 'permission-handling',
         cweId: 'CWE-285',
         owaspCategory: 'A01:2021-Broken Access Control'
       });
@@ -696,8 +806,11 @@ export class AdvancedMobileAnalyzer {
         description: 'Hermes engine provides better code protection',
         file: fileName,
         line: lineNumber,
+        codeSnippet: line,
         suggestion: 'Enable Hermes engine for better code protection',
         impact: 'Code is more vulnerable to reverse engineering',
+        framework: 'react-native',
+        securityPattern: 'code-obfuscation',
         cweId: 'CWE-656',
         owaspCategory: 'A05:2021-Security Misconfiguration'
       });

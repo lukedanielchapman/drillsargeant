@@ -585,20 +585,20 @@ export class MobileDuplicationDetector {
   }
 
   /**
-   * Generate duplication suggestion
+   * Generate duplication suggestion based on type and framework
    */
-  private generateDuplicationSuggestion(type: string, framework: string): string {
+  private generateDuplicationSuggestion(_type: string, framework: string): string {
     switch (framework) {
       case 'flutter':
-        return `Extract common code into a shared widget or utility class. Consider using mixins or abstract classes for reusable functionality.`;
+        return 'Consider extracting common widgets into reusable components';
       case 'react-native':
-        return `Create a shared component or utility function. Consider using custom hooks for reusable logic.`;
+        return 'Consider creating shared components or custom hooks';
       case 'ios':
-        return `Extract common code into a shared class or category. Consider using protocols for reusable functionality.`;
+        return 'Consider creating shared utility classes or extensions';
       case 'android':
-        return `Create a shared utility class or base activity/fragment. Consider using inheritance or composition patterns.`;
+        return 'Consider creating shared utility classes or base classes';
       default:
-        return `Extract common code into a shared module or utility class.`;
+        return 'Consider refactoring duplicated code into reusable functions';
     }
   }
 
